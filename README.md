@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.jpg" alt="Foreman (Прораб): a project's promises don't get lost. For Claude Code." width="100%">
+  <img src="assets/foreman-banner.webp" alt="Foreman (Прораб): a project's promises don't get lost. For Claude Code." width="100%">
 </p>
 
 <h1 align="center">Foreman · Прораб</h1>
