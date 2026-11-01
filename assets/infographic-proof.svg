@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 690" width="1200" height="690" role="img" aria-labelledby="title desc">
+<title id="title">Proof, not promises: a promise card with probes, the lifecycle and the control check</title>
+<desc id="desc">Promise P-007, high priority, doing, quotes the owner verbatim: add CSV export to the reports page and a button for it. Two probes pass (file src/export/csv.py, grep def export_csv), one fails (the button text), so the status by probes is partly, 2 of 3. Lifecycle: todo, doing, probes green, accepted only after the owner accepts; also parked, waiting, dropped. Accepted items whose probes fail are flagged red as regressions. Control: fake probes must fail on every check, so the checker is trusted.</desc>
+<style>
+  .h1 { font: 700 34px Georgia, 'Times New Roman', Times, serif; fill: #2E1E15; }
+  .sub { font: 400 18px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #5A4636; }
+  .h2 { font: 700 22px Georgia, 'Times New Roman', Times, serif; fill: #2E1E15; }
+  .h3 { font: 700 19px Georgia, 'Times New Roman', Times, serif; fill: #2E1E15; }
+  .body { font: 400 16px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #5A4636; }
+  .bodyb { font: 600 16px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #2E1E15; }
+  .small { font: 400 15px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #6E5A49; }
+  .caps { font: 700 14px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; letter-spacing: 1.6px; fill: #6E5A49; }
+  .mono { font: 400 15px ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace; fill: #2E1E15; }
+  .monob { font: 700 22px ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace; fill: #A8361F; }
+  .quote { font: italic 400 20px Georgia, 'Times New Roman', Times, serif; fill: #2E1E15; }
+  .num { font: 700 20px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #FFFFFF; }
+  .hero { font: 700 44px Georgia, 'Times New Roman', Times, serif; fill: #2E1E15; }
+</style>
+<rect width="1200" height="690" rx="20" fill="#F5EEDF"/>
+<rect x="8" y="8" width="1184" height="674" rx="14" fill="none" stroke="#DCCDB3" stroke-width="2"/>
+<text x="60" y="72" class="h1" text-anchor="start">Proof, not promises</text>
+<text x="60" y="104" class="sub" text-anchor="start">Every promise carries machine checks. Its status is computed, never typed, and re-checked every session.</text>
+<rect x="40" y="136" width="640" height="452" rx="16" fill="#FFFBF2" stroke="#DCCDB3" stroke-width="2"/>
+<text x="68" y="182" class="monob" text-anchor="start">P-007</text>
+<rect x="170" y="160" width="65" height="28" rx="14" fill="#F3DDD3"/><text x="182" y="179.5" class="caps" style="fill:#A8361F">high</text>
+<rect x="245" y="160" width="76" height="28" rx="14" fill="#DCE6EE"/><text x="257" y="179.5" class="caps" style="fill:#2F5370">doing</text>
+<text x="68" y="232" class="quote" text-anchor="start">“Add CSV export to the reports page,</text>
+<text x="68" y="260" class="quote" text-anchor="start">and put a button for it.”</text>
+<text x="68" y="296" class="small" text-anchor="start">— the owner, Monday, verbatim</text>
+<text x="68" y="342" class="caps" text-anchor="start">PROBES</text>
+<circle cx="82" cy="376" r="13" fill="#2F6B2F"/><path d="M76.15,376.26 L80.7,380.94 L88.5,371.45" fill="none" stroke="#fff" stroke-width="2.9" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="108" y="381" class="mono" text-anchor="start">file:src/export/csv.py</text>
+<text x="652" y="381" class="caps" text-anchor="end" style="fill:#2F6B2F">PASS</text>
+<circle cx="82" cy="422" r="13" fill="#2F6B2F"/><path d="M76.15,422.26 L80.7,426.94 L88.5,417.45" fill="none" stroke="#fff" stroke-width="2.9" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="108" y="427" class="mono" text-anchor="start">grep:src/reports.py:def export_csv</text>
+<text x="652" y="427" class="caps" text-anchor="end" style="fill:#2F6B2F">PASS</text>
+<circle cx="82" cy="468" r="13" fill="#B42318"/><path d="M77.06,463.06 L86.94,472.94 M86.94,463.06 L77.06,472.94" stroke="#fff" stroke-width="2.9" stroke-linecap="round"/>
+<text x="108" y="473" class="mono" text-anchor="start">grep:web/reports.html:Export CSV</text>
+<text x="652" y="473" class="caps" text-anchor="end" style="fill:#B42318">FAIL</text>
+<line x1="68" y1="504" x2="652" y2="504" stroke="#DCCDB3" stroke-width="2"/>
+<text x="68" y="536" class="caps" text-anchor="start">STATUS BY PROBES</text>
+<rect x="250" y="516" width="242" height="28" rx="14" fill="#F4E6C8"/><text x="262" y="535.5" class="caps" style="fill:#8A5A00">PARTLY · 2 of 3 green</text>
+<text x="68" y="568" class="body" text-anchor="start">The brief tells the next session: the button is still missing.</text>
+<text x="720" y="166" class="caps" text-anchor="start">LIFECYCLE</text>
+<rect x="720" y="188" width="65" height="32" rx="16" fill="#DCE6EE"/><text x="732" y="209.5" class="caps" style="fill:#2F5370">todo</text>
+<text x="799" y="210" class="body" text-anchor="start">filed from your ask</text>
+<path d="M744,224 L744,244" stroke="#6E5A49" stroke-width="3" stroke-linecap="round"/>
+<path d="M737,238 L744,246 L751,238" fill="none" stroke="#6E5A49" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="720" y="250" width="76" height="32" rx="16" fill="#DCE6EE"/><text x="732" y="271.5" class="caps" style="fill:#2F5370">doing</text>
+<text x="810" y="272" class="body" text-anchor="start">with a written next step</text>
+<path d="M744,286 L744,306" stroke="#6E5A49" stroke-width="3" stroke-linecap="round"/>
+<path d="M737,300 L744,308 L751,300" fill="none" stroke="#6E5A49" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="720" y="312" width="148" height="32" rx="16" fill="#DDEBD7"/><text x="732" y="333.5" class="caps" style="fill:#2F6B2F">probes green</text>
+<text x="882" y="334" class="body" text-anchor="start">built, waiting for you</text>
+<path d="M744,348 L744,368" stroke="#6E5A49" stroke-width="3" stroke-linecap="round"/>
+<path d="M737,362 L744,370 L751,362" fill="none" stroke="#6E5A49" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="720" y="374" width="107" height="32" rx="16" fill="#DDEBD7"/><text x="732" y="395.5" class="caps" style="fill:#2F6B2F">accepted</text>
+<text x="841" y="396" class="body" text-anchor="start">only after you accept it</text>
+<text x="720" y="432" class="caps" text-anchor="start">ALSO</text>
+<text x="720" y="460" class="body" text-anchor="start">parked: a newer ask arrived; the next step is kept</text>
+<text x="720" y="484" class="body" text-anchor="start">waiting: needs your word, with options</text>
+<text x="720" y="508" class="body" text-anchor="start">dropped: only when you say so</text>
+<rect x="720" y="528" width="430" height="34" rx="10" fill="#F6D9D4"/>
+<circle cx="742" cy="545" r="11" fill="#B42318"/><path d="M737.82,540.82 L746.18,549.18 M746.18,540.82 L737.82,549.18" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+<text x="762" y="551" class="bodyb" text-anchor="start" style="fill:#B42318">RED: accepted, but now a probe fails</text>
+<text x="720" y="586" class="body" text-anchor="start">A regression in accepted work is flagged in the next brief.</text>
+<rect x="40" y="612" width="1120" height="52" rx="14" fill="#FFFBF2" stroke="#DCCDB3" stroke-width="2"/>
+<text x="64" y="644" class="caps" text-anchor="start">CONTROL</text>
+<text x="160" y="644" class="body" text-anchor="start">Fake probes run on every check and must fail:</text>
+<circle cx="560" cy="638" r="11" fill="#B42318"/><path d="M555.82,633.82 L564.18,642.18 M564.18,633.82 L555.82,642.18" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+<text x="580" y="644" class="mono" text-anchor="start">file:__never__</text>
+<circle cx="740" cy="638" r="11" fill="#B42318"/><path d="M735.82,633.82 L744.18,642.18 M744.18,633.82 L735.82,642.18" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+<text x="760" y="644" class="mono" text-anchor="start">grep:__never__</text>
+<circle cx="940" cy="638" r="11" fill="#2F6B2F"/><path d="M935.05,638.22 L938.9,642.18 L945.5,634.15" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="960" y="644" class="bodyb" text-anchor="start" style="fill:#2F6B2F">checker trusted</text>
+</svg>

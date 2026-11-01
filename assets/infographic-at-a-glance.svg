@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 206" width="1200" height="206" role="img" aria-labelledby="title desc">
+<title id="title">Foreman at a glance</title>
+<desc id="desc">3 hooks catch, remind and re-brief. 6 probe types prove what is built. 1 Python file, standard library only. 0 dependencies and no API keys. 2 minutes to install with one command. Messages in Russian and English.</desc>
+<style>
+  .h1 { font: 700 34px Georgia, 'Times New Roman', Times, serif; fill: #2E1E15; }
+  .sub { font: 400 18px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #5A4636; }
+  .h2 { font: 700 22px Georgia, 'Times New Roman', Times, serif; fill: #2E1E15; }
+  .h3 { font: 700 19px Georgia, 'Times New Roman', Times, serif; fill: #2E1E15; }
+  .body { font: 400 16px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #5A4636; }
+  .bodyb { font: 600 16px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #2E1E15; }
+  .small { font: 400 15px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #6E5A49; }
+  .caps { font: 700 14px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; letter-spacing: 1.6px; fill: #6E5A49; }
+  .mono { font: 400 15px ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace; fill: #2E1E15; }
+  .monob { font: 700 22px ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace; fill: #A8361F; }
+  .quote { font: italic 400 20px Georgia, 'Times New Roman', Times, serif; fill: #2E1E15; }
+  .num { font: 700 20px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #FFFFFF; }
+  .hero { font: 700 44px Georgia, 'Times New Roman', Times, serif; fill: #2E1E15; }
+</style>
+<rect width="1200" height="206" rx="20" fill="#F5EEDF"/>
+<rect x="8" y="8" width="1184" height="190" rx="14" fill="none" stroke="#DCCDB3" stroke-width="2"/>
+<rect x="40" y="28" width="175" height="150" rx="14" fill="#FFFBF2" stroke="#DCCDB3" stroke-width="2"/>
+<rect x="60" y="46" width="28" height="4" rx="2" fill="#A8361F"/>
+<text x="60" y="102" class="hero" style="font-size:44px">3</text>
+<text x="60" y="132" class="small" text-anchor="start">hooks: catch,</text>
+<text x="60" y="153" class="small" text-anchor="start">remind, re-brief</text>
+<rect x="229" y="28" width="175" height="150" rx="14" fill="#FFFBF2" stroke="#DCCDB3" stroke-width="2"/>
+<rect x="249" y="46" width="28" height="4" rx="2" fill="#A8361F"/>
+<text x="249" y="102" class="hero" style="font-size:44px">6</text>
+<text x="249" y="132" class="small" text-anchor="start">probe types</text>
+<text x="249" y="153" class="small" text-anchor="start">prove what's built</text>
+<rect x="418" y="28" width="175" height="150" rx="14" fill="#FFFBF2" stroke="#DCCDB3" stroke-width="2"/>
+<rect x="438" y="46" width="28" height="4" rx="2" fill="#A8361F"/>
+<text x="438" y="102" class="hero" style="font-size:44px">1</text>
+<text x="438" y="132" class="small" text-anchor="start">Python file,</text>
+<text x="438" y="153" class="small" text-anchor="start">stdlib only</text>
+<rect x="607" y="28" width="175" height="150" rx="14" fill="#FFFBF2" stroke="#DCCDB3" stroke-width="2"/>
+<rect x="627" y="46" width="28" height="4" rx="2" fill="#A8361F"/>
+<text x="627" y="102" class="hero" style="font-size:44px">0</text>
+<text x="627" y="132" class="small" text-anchor="start">dependencies,</text>
+<text x="627" y="153" class="small" text-anchor="start">no API keys</text>
+<rect x="796" y="28" width="175" height="150" rx="14" fill="#FFFBF2" stroke="#DCCDB3" stroke-width="2"/>
+<rect x="816" y="46" width="28" height="4" rx="2" fill="#A8361F"/>
+<text x="816" y="102" class="hero" style="font-size:34px">2 min</text>
+<text x="816" y="132" class="small" text-anchor="start">to install,</text>
+<text x="816" y="153" class="small" text-anchor="start">one command</text>
+<rect x="985" y="28" width="175" height="150" rx="14" fill="#FFFBF2" stroke="#DCCDB3" stroke-width="2"/>
+<rect x="1005" y="46" width="28" height="4" rx="2" fill="#A8361F"/>
+<text x="1005" y="102" class="hero" style="font-size:34px">RU·EN</text>
+<text x="1005" y="132" class="small" text-anchor="start">messages in</text>
+<text x="1005" y="153" class="small" text-anchor="start">two languages</text>
+</svg>

@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="1200" height="600" role="img" aria-labelledby="title desc">
+<title id="title">One request, two endings: without Foreman it is lost by Friday, with Foreman it is proven done</title>
+<desc id="desc">Two timelines from Monday to Friday. Without Foreman, a request made on Monday is lost after a context compaction and a newer ask. With Foreman it is captured verbatim as P-007, survives compaction through the registry brief, is parked when a newer ask arrives, and is proven done by green probes on Friday.</desc>
+<style>
+  .h1 { font: 700 34px Georgia, 'Times New Roman', Times, serif; fill: #2E1E15; }
+  .sub { font: 400 18px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #5A4636; }
+  .h2 { font: 700 22px Georgia, 'Times New Roman', Times, serif; fill: #2E1E15; }
+  .h3 { font: 700 19px Georgia, 'Times New Roman', Times, serif; fill: #2E1E15; }
+  .body { font: 400 16px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #5A4636; }
+  .bodyb { font: 600 16px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #2E1E15; }
+  .small { font: 400 15px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #6E5A49; }
+  .caps { font: 700 14px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; letter-spacing: 1.6px; fill: #6E5A49; }
+  .mono { font: 400 15px ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace; fill: #2E1E15; }
+  .monob { font: 700 22px ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace; fill: #A8361F; }
+  .quote { font: italic 400 20px Georgia, 'Times New Roman', Times, serif; fill: #2E1E15; }
+  .num { font: 700 20px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #FFFFFF; }
+  .hero { font: 700 44px Georgia, 'Times New Roman', Times, serif; fill: #2E1E15; }
+</style>
+<rect width="1200" height="600" rx="20" fill="#F5EEDF"/>
+<rect x="8" y="8" width="1184" height="584" rx="14" fill="none" stroke="#DCCDB3" stroke-width="2"/>
+<text x="60" y="72" class="h1" text-anchor="start">One week. One request. Two endings.</text>
+<text x="60" y="104" class="sub" text-anchor="start">A long project with Claude Code, with and without a foreman on site.</text>
+<text x="175" y="158" class="caps" text-anchor="middle">MON</text>
+<text x="400" y="158" class="caps" text-anchor="middle">TUE</text>
+<text x="625" y="158" class="caps" text-anchor="middle">WED</text>
+<text x="850" y="158" class="caps" text-anchor="middle">THU</text>
+<text x="1075" y="158" class="caps" text-anchor="middle">FRI</text>
+<rect x="60" y="180" width="180" height="30" rx="15" fill="#F6D9D4"/><text x="72" y="200.5" class="caps" style="fill:#B42318">WITHOUT FOREMAN</text>
+<line x1="175" y1="250" x2="400" y2="250" stroke="#5A4636" stroke-width="4" />
+<line x1="400" y1="250" x2="625" y2="250" stroke="#5A4636" stroke-width="4" />
+<line x1="625" y1="250" x2="850" y2="250" stroke="#DCCDB3" stroke-width="4" stroke-dasharray="2 10" stroke-linecap="round"/>
+<line x1="850" y1="250" x2="1075" y2="250" stroke="#DCCDB3" stroke-width="4" stroke-dasharray="2 10" stroke-linecap="round"/>
+<circle cx="175" cy="250" r="11" fill="#FFFBF2" stroke="#5A4636" stroke-width="4"/>
+<text x="175" y="296" class="bodyb" text-anchor="middle">“Add CSV export”</text>
+<text x="175" y="318" class="body" text-anchor="middle">you ask in the chat</text>
+<circle cx="400" cy="250" r="11" fill="#FFFBF2" stroke="#5A4636" stroke-width="4"/>
+<text x="400" y="296" class="bodyb" text-anchor="middle">Work goes on</text>
+<text x="400" y="318" class="body" text-anchor="middle">other tasks in flight</text>
+<circle cx="625" cy="250" r="11" fill="#FFFBF2" stroke="#5A4636" stroke-width="4"/>
+<text x="625" y="296" class="bodyb" text-anchor="middle">Context compacted</text>
+<text x="625" y="318" class="body" text-anchor="middle">the recap drops details</text>
+<circle cx="850" cy="250" r="11" fill="#FFFBF2" stroke="#DCCDB3" stroke-width="4"/>
+<text x="850" y="296" class="bodyb" text-anchor="middle">A newer ask</text>
+<text x="850" y="318" class="body" text-anchor="middle">takes the spotlight</text>
+<circle cx="1075" cy="250" r="18" fill="#B42318"/><path d="M1068.16,243.16 L1081.84,256.84 M1081.84,243.16 L1068.16,256.84" stroke="#fff" stroke-width="4.0" stroke-linecap="round"/>
+<text x="1075" y="296" class="bodyb" text-anchor="middle" style="fill:#B42318">CSV export?</text>
+<text x="1075" y="318" class="body" text-anchor="middle">silently lost</text>
+<rect x="60" y="375" width="148" height="30" rx="15" fill="#DDEBD7"/><text x="72" y="395.5" class="caps" style="fill:#2F6B2F">WITH FOREMAN</text>
+<line x1="175" y1="445" x2="400" y2="445" stroke="#5A4636" stroke-width="4" />
+<line x1="400" y1="445" x2="625" y2="445" stroke="#5A4636" stroke-width="4" />
+<line x1="625" y1="445" x2="850" y2="445" stroke="#5A4636" stroke-width="4" />
+<line x1="850" y1="445" x2="1075" y2="445" stroke="#5A4636" stroke-width="4" />
+<circle cx="175" cy="445" r="11" fill="#FFFBF2" stroke="#5A4636" stroke-width="4"/>
+<text x="175" y="491" class="bodyb" text-anchor="middle">Captured verbatim</text>
+<text x="175" y="513" class="body" text-anchor="middle">as P-007 + probes</text>
+<circle cx="400" cy="445" r="11" fill="#FFFBF2" stroke="#5A4636" stroke-width="4"/>
+<text x="400" y="491" class="bodyb" text-anchor="middle">Work goes on</text>
+<text x="400" y="513" class="body" text-anchor="middle">P-007 stays on record</text>
+<circle cx="625" cy="445" r="11" fill="#FFFBF2" stroke="#5A4636" stroke-width="4"/>
+<text x="625" y="491" class="bodyb" text-anchor="middle">Context compacted</text>
+<text x="625" y="513" class="body" text-anchor="middle">brief from the registry</text>
+<circle cx="850" cy="445" r="11" fill="#FFFBF2" stroke="#5A4636" stroke-width="4"/>
+<text x="850" y="491" class="bodyb" text-anchor="middle">A newer ask</text>
+<text x="850" y="513" class="body" text-anchor="middle">P-007 parked + next step</text>
+<circle cx="1075" cy="445" r="18" fill="#2F6B2F"/><path d="M1066.9,445.36 L1073.2,451.84 L1084.0,438.7" fill="none" stroke="#fff" stroke-width="4.0" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1075" y="491" class="bodyb" text-anchor="middle" style="fill:#2F6B2F">Probes green</text>
+<text x="1075" y="513" class="body" text-anchor="middle">kept, and proven</text>
+<text x="600" y="568" class="small" text-anchor="middle">Nobody decided to drop the CSV export. It simply fell out of the context. Foreman keeps it on paper.</text>
+</svg>

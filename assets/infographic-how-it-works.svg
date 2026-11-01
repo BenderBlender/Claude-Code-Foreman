@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 660" width="1200" height="660" role="img" aria-labelledby="title desc">
+<title id="title">How Foreman works: ask, inbox, triage, registry, brief</title>
+<desc id="desc">Five steps. 1 You ask in plain words. 2 The UserPromptSubmit hook catches the ask verbatim into the inbox. 3 The Stop hook reminds Claude once to file it as a promise or mark it not a task. 4 The registry, promises.jsonl, keeps the quote, priority, next step and probes. 5 The SessionStart hook re-briefs Claude from the registry on start, resume and after compaction. Below: probes compute done; control probes must fail; the foreman agent judges meaning.</desc>
+<style>
+  .h1 { font: 700 34px Georgia, 'Times New Roman', Times, serif; fill: #2E1E15; }
+  .sub { font: 400 18px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #5A4636; }
+  .h2 { font: 700 22px Georgia, 'Times New Roman', Times, serif; fill: #2E1E15; }
+  .h3 { font: 700 19px Georgia, 'Times New Roman', Times, serif; fill: #2E1E15; }
+  .body { font: 400 16px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #5A4636; }
+  .bodyb { font: 600 16px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #2E1E15; }
+  .small { font: 400 15px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #6E5A49; }
+  .caps { font: 700 14px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; letter-spacing: 1.6px; fill: #6E5A49; }
+  .mono { font: 400 15px ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace; fill: #2E1E15; }
+  .monob { font: 700 22px ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace; fill: #A8361F; }
+  .quote { font: italic 400 20px Georgia, 'Times New Roman', Times, serif; fill: #2E1E15; }
+  .num { font: 700 20px 'Segoe UI', -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #FFFFFF; }
+  .hero { font: 700 44px Georgia, 'Times New Roman', Times, serif; fill: #2E1E15; }
+</style>
+<rect width="1200" height="660" rx="20" fill="#F5EEDF"/>
+<rect x="8" y="8" width="1184" height="644" rx="14" fill="none" stroke="#DCCDB3" stroke-width="2"/>
+<text x="60" y="72" class="h1" text-anchor="start">How Foreman works</text>
+<text x="60" y="104" class="sub" text-anchor="start">Three Claude Code hooks feed one registry. Probes decide what is done. You just talk.</text>
+<rect x="40" y="136" width="208" height="270" rx="14" fill="#FFFBF2" stroke="#DCCDB3" stroke-width="2"/>
+<circle cx="74" cy="174" r="19" fill="#A8361F"/>
+<text x="74" y="181" class="num" text-anchor="middle">1</text>
+<text x="104" y="182" class="h2" text-anchor="start">You ask</text>
+<text x="58" y="224" class="caps" text-anchor="start">YOUR WORDS</text>
+<rect x="56" y="234" width="106" height="28" rx="14" fill="#F3DDD3"/><text x="68" y="253.5" class="mono" style="fill:#A8361F">just talk</text>
+<text x="58" y="298" class="body" text-anchor="start">“Add a login page</text>
+<text x="58" y="321" class="body" text-anchor="start">with a health check.”</text>
+<text x="58" y="344" class="body" text-anchor="start">No forms, no new</text>
+<text x="58" y="367" class="body" text-anchor="start">commands to learn.</text>
+<path d="M253,262.0 L264,271.0 L253,280.0" fill="none" stroke="#6E5A49" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="268" y="136" width="208" height="270" rx="14" fill="#FFFBF2" stroke="#DCCDB3" stroke-width="2"/>
+<circle cx="302" cy="174" r="19" fill="#A8361F"/>
+<text x="302" y="181" class="num" text-anchor="middle">2</text>
+<text x="332" y="182" class="h2" text-anchor="start">Inbox</text>
+<text x="286" y="224" class="caps" text-anchor="start">AUTOMATIC HOOK</text>
+<rect x="284" y="234" width="171" height="28" rx="14" fill="#DCE6EE"/><text x="296" y="253.5" class="mono" style="fill:#2F5370">UserPromptSubmit</text>
+<text x="286" y="298" class="body" text-anchor="start">Every ask is caught</text>
+<text x="286" y="321" class="body" text-anchor="start">word for word as</text>
+<text x="286" y="344" class="body" text-anchor="start">I-0001. Small talk</text>
+<text x="286" y="367" class="body" text-anchor="start">is skipped.</text>
+<path d="M481,262.0 L492,271.0 L481,280.0" fill="none" stroke="#6E5A49" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="496" y="136" width="208" height="270" rx="14" fill="#FFFBF2" stroke="#DCCDB3" stroke-width="2"/>
+<circle cx="530" cy="174" r="19" fill="#A8361F"/>
+<text x="530" y="181" class="num" text-anchor="middle">3</text>
+<text x="560" y="182" class="h2" text-anchor="start">Triage</text>
+<text x="514" y="224" class="caps" text-anchor="start">AUTOMATIC HOOK</text>
+<rect x="512" y="234" width="60" height="28" rx="14" fill="#DCE6EE"/><text x="524" y="253.5" class="mono" style="fill:#2F5370">Stop</text>
+<text x="514" y="298" class="body" text-anchor="start">End of the turn: one</text>
+<text x="514" y="321" class="body" text-anchor="start">reminder to file it</text>
+<text x="514" y="344" class="body" text-anchor="start">as a promise or mark</text>
+<text x="514" y="367" class="body" text-anchor="start">it “not a task”.</text>
+<path d="M709,262.0 L720,271.0 L709,280.0" fill="none" stroke="#6E5A49" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="724" y="136" width="208" height="270" rx="14" fill="#FFFBF2" stroke="#DCCDB3" stroke-width="2"/>
+<circle cx="758" cy="174" r="19" fill="#A8361F"/>
+<text x="758" y="181" class="num" text-anchor="middle">4</text>
+<text x="788" y="182" class="h2" text-anchor="start">Registry</text>
+<text x="742" y="224" class="caps" text-anchor="start">PLAIN TEXT IN GIT</text>
+<rect x="740" y="234" width="152" height="28" rx="14" fill="#F3DDD3"/><text x="752" y="253.5" class="mono" style="fill:#A8361F">promises.jsonl</text>
+<text x="742" y="298" class="body" text-anchor="start">P-001 keeps your</text>
+<text x="742" y="321" class="body" text-anchor="start">quote verbatim, the</text>
+<text x="742" y="344" class="body" text-anchor="start">priority, the next</text>
+<text x="742" y="367" class="body" text-anchor="start">step, 1–3 probes.</text>
+<path d="M937,262.0 L948,271.0 L937,280.0" fill="none" stroke="#6E5A49" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="952" y="136" width="208" height="270" rx="14" fill="#FFFBF2" stroke="#DCCDB3" stroke-width="2"/>
+<circle cx="986" cy="174" r="19" fill="#A8361F"/>
+<text x="986" y="181" class="num" text-anchor="middle">5</text>
+<text x="1016" y="182" class="h2" text-anchor="start">Brief</text>
+<text x="970" y="224" class="caps" text-anchor="start">AUTOMATIC HOOK</text>
+<rect x="968" y="234" width="134" height="28" rx="14" fill="#DCE6EE"/><text x="980" y="253.5" class="mono" style="fill:#2F5370">SessionStart</text>
+<text x="970" y="298" class="body" text-anchor="start">On start, resume and</text>
+<text x="970" y="321" class="body" text-anchor="start">after compaction,</text>
+<text x="970" y="344" class="body" text-anchor="start">Claude reads the</text>
+<text x="970" y="367" class="body" text-anchor="start">registry, not a recap.</text>
+<rect x="40" y="436" width="360" height="196" rx="14" fill="#FFFBF2" stroke="#DCCDB3" stroke-width="2"/>
+<rect x="40" y="436" width="8" height="196" rx="4" fill="#A8361F"/>
+<text x="68" y="478" class="h2" text-anchor="start">The check</text>
+<text x="68" y="508" class="bodyb" text-anchor="start">Probes compute “done”:</text>
+<text x="68" y="544" class="bodyb" text-anchor="start" style="fill:#A8361F">file · grep · nogrep · doc · get · cmd</text>
+<text x="68" y="570" class="body" text-anchor="start">Nobody ever types “done”. A promise is</text>
+<text x="68" y="593" class="body" text-anchor="start">kept when its probes turn green.</text>
+<rect x="420" y="436" width="360" height="196" rx="14" fill="#FFFBF2" stroke="#DCCDB3" stroke-width="2"/>
+<rect x="420" y="436" width="8" height="196" rx="4" fill="#2F5370"/>
+<text x="448" y="478" class="h2" text-anchor="start">The control</text>
+<text x="448" y="508" class="bodyb" text-anchor="start">A checker that checks itself</text>
+<text x="448" y="544" class="body" text-anchor="start">Fake probes run on every check and must</text>
+<text x="448" y="570" class="body" text-anchor="start">fail. If one passes, the checker is broken</text>
+<text x="448" y="593" class="body" text-anchor="start">and the brief says so: no false greens.</text>
+<rect x="800" y="436" width="360" height="196" rx="14" fill="#FFFBF2" stroke="#DCCDB3" stroke-width="2"/>
+<rect x="800" y="436" width="8" height="196" rx="4" fill="#A8361F"/>
+<text x="828" y="478" class="h2" text-anchor="start">The foreman agent</text>
+<text x="828" y="508" class="bodyb" text-anchor="start">Judges what probes cannot</text>
+<text x="828" y="544" class="body" text-anchor="start">Done by meaning? What was forgotten?</text>
+<text x="828" y="570" class="body" text-anchor="start">Three next steps by your priorities.</text>
+<text x="828" y="593" class="body" text-anchor="start">One screen, plain words.</text>
+</svg>
