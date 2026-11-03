@@ -23,6 +23,12 @@ CONTROL: fake probes are run every time and MUST fail — a passing control mean
   python .foreman/foreman.py set P-003 status=parked next="…"                 (PARKING before a new ask mid-work)
   python .foreman/foreman.py take I-0002 --as P-007   |   skip I-0002 --why "a question, not a task"
   python .foreman/foreman.py hook inbox|stop|session        (Claude Code hooks; JSON on stdin, JSON on stdout)
+COUNCIL — for hard items, a search with a kept leader (procedure: .claude/skills/foreman-council/SKILL.md):
+  python .foreman/foreman.py check P-007 [--root ../cand-a]             the item's probes on any folder (e.g. a git worktree)
+  python .foreman/foreman.py compare P-007 L=. A=../cand-a B=../cand-b  the same probes on every candidate, side by side
+  python .foreman/foreman.py round P-007 '{"tried": ["L","A","B"], "winner": "A", "accepted": true, "why": "…"}'
+  After the first logged round the item's probes and rubric are FROZEN (set refuses them without --force): the criteria are
+  fixed before the search and never tailored to a candidate. «round» says when to stop: the BEST verified version wins, not the last.
 Standard library only, Python 3.8+. Made by Claude (Anthropic) with a film producer, 2026-11-01 — see README.md."""
 import datetime as dt
 import glob
@@ -66,7 +72,17 @@ T = {
                           'Если шла другая работа — ПАРКОВКА: set P-<текущий> status=parked next="<следующий шаг>".'),
            'hook_stop': ('ПРОРАБ: входящие просьбы не разобраны — {list}. Разберите каждую: работа → add {{…}} + take I-… --as P-…; не задача / уже есть пункт → '
                          'skip I-… --why «…» (или take на существующий P-…). Напоминание одно — дальше пункт виден в сводке.'),
-           'compact': 'После сжатия контекста — состояние проекта из РЕЕСТРА (не из пересказа):'},
+           'compact': 'После сжатия контекста — состояние проекта из РЕЕСТРА (не из пересказа):',
+           'council': 'Консилиум', 'council_item': '{id} раунд {n}/{max} · лидер {lead} · без улучшения {stale}', 'lead_initial': 'исходный',
+           'council_go': 'Дальше: раунд {n}/{max}, кандидатов {k}. Пробы и рубрика заморожены — сравнивать по ним же.',
+           'council_stop': 'СТОП консилиума ({why}): оставьте ЛУЧШЕГО ({lead}), а не последнего; уберите лишние worktree; '
+                           'вкусовой выбор → set {id} status=waiting waits="финалисты: …".',
+           'why_stale': '{s} раунд(а) подряд без улучшения', 'why_max': 'исчерпан предел раундов',
+           'frozen': 'Пробы и рубрика {id} заморожены: идёт консилиум ({n} раунд(ов)). Критерии не подгоняют под кандидатов. '
+                     'Если критерий ошибочен — скажите владельцу и повторите с --force.',
+           'cmp_head': '{id}: сравнение по пробам (объективная часть; смысл и вкус оценивает слепой судья foreman-judge):',
+           'cmp_best': 'Больше всего зелёных проб: {labels}', 'cmp_ctrl': 'контроль СЛОМАН — этой проверке не верить',
+           'no_root': 'нет такой папки:'},
     'en': {'head': 'FOREMAN ({when}; registry .foreman/promises.jsonl): {n} items · by probes done {ok} · partly {part} · not {no}{unk} · waiting for you {wait}',
            'unk': ' · not checked {n} (server down)', 'doing': 'In progress', 'next': 'Next by priority',
            'built': 'Probes green but status «todo/doing» — verify and mark «accepted»', 'red': 'RED — «accepted» but the probes disagree',
@@ -82,16 +98,28 @@ T = {
                           'If other work was going on — PARKING: set P-<current> status=parked next="<next step>".'),
            'hook_stop': ('FOREMAN: unprocessed asks in the inbox — {list}. Triage each: work → add {{…}} + take I-… --as P-…; not a task / already an item → '
                          'skip I-… --why "…" (or take onto the existing P-…). One reminder only — after that the item shows in the brief.'),
-           'compact': 'After the context compaction — the project state from the REGISTRY (not from the summary):'},
+           'compact': 'After the context compaction — the project state from the REGISTRY (not from the summary):',
+           'council': 'Council', 'council_item': '{id} round {n}/{max} · leader {lead} · no gain {stale}', 'lead_initial': 'initial',
+           'council_go': 'Next: round {n}/{max}, {k} candidates. Probes and rubric are frozen — compare by them.',
+           'council_stop': 'COUNCIL STOP ({why}): keep the BEST ({lead}), not the latest; remove the spare worktrees; '
+                           'a matter of taste → set {id} status=waiting waits="finalists: …".',
+           'why_stale': '{s} round(s) in a row without a gain', 'why_max': 'the round limit is reached',
+           'frozen': 'The probes and rubric of {id} are frozen: a council is running ({n} round(s)). Criteria are never tailored to '
+                     'candidates. If a criterion is wrong, tell the owner and repeat with --force.',
+           'cmp_head': '{id}: comparison by probes (the objective part; meaning and taste go to the blind judge foreman-judge):',
+           'cmp_best': 'Most green probes: {labels}', 'cmp_ctrl': 'control BROKEN — do not trust this check',
+           'no_root': 'no such folder:'},
 }
 
 
 def config():
+    council = {'candidates': 2, 'max_rounds': 3, 'stop_after': 2}
     c = {'lang': 'ru', 'stale_days': 3, 'allow_cmd': False, 'orphans': {'candidates': [], 'corpus': []}, 'extra_ask_cues': []}
     try:
         c.update(json.load(io.open(CONFIG, encoding='utf-8')))
     except (OSError, ValueError):
         pass
+    c['council'] = {**council, **(c.get('council') or {})}
     return c
 
 
@@ -131,6 +159,11 @@ def today():
 
 def path_of(p):
     return os.path.join(ROOT, p)
+
+
+def set_root(path):
+    global ROOT
+    ROOT = os.path.abspath(path)
 
 
 _server = {}
@@ -205,6 +238,34 @@ def age(item):
         return None
 
 
+def probe_report(item, root):
+    """the item's probes and the control, run against another folder (e.g. a candidate's git worktree)"""
+    saved = ROOT
+    set_root(root)
+    try:
+        state, res = check_item(item)
+        ctrl = all(check_item(c)[0] == 'not' for c in CONTROLS)
+    finally:
+        set_root(saved)
+    return state, res, ctrl
+
+
+def council_state(item):
+    rounds = item.get('rounds') or []
+    stale = 0
+    for r in reversed(rounds):
+        if r.get('accepted'):
+            break
+        stale += 1
+    lead = next((r.get('winner') for r in reversed(rounds) if r.get('accepted') and r.get('winner')), L['lead_initial'])
+    return len(rounds), stale, lead
+
+
+def council_line(item):
+    n, stale, lead = council_state(item)
+    return L['council_item'].format(id=item.get('id'), n=n, max=CFG['council']['max_rounds'], lead=lead, stale=stale)
+
+
 def run():
     reg = jsonl(REG)
     for it in reg:
@@ -226,7 +287,8 @@ def summary(r):
                 nxt=sorted([i for i in live if i.get('status') in ('todo', 'parked') and i['_check'] != 'done'], key=key),
                 red=[i for i in live if i.get('status') == 'accepted' and i['_check'] in ('not', 'partly')],
                 built=[i for i in live if i.get('status') in ('todo', 'doing') and i['_check'] == 'done'],
-                stale=[i for i in live if i.get('status') == 'doing' and (age(i) or 0) > CFG.get('stale_days', 3)])
+                stale=[i for i in live if i.get('status') == 'doing' and (age(i) or 0) > CFG.get('stale_days', 3)],
+                council=[i for i in live if i.get('rounds') and i.get('status') in OPEN])
 
 
 def short(it, n=55):
@@ -241,6 +303,8 @@ def brief(r):
                             unk=L['unk'].format(n=unk) if unk else '', wait=len(s['waiting']))]
     if s['doing']:
         out.append(L['doing'] + ': ' + '; '.join(f"{short(i, 40)} → {(i.get('next') or '')[:70]}" for i in s['doing'][:4]))
+    if s['council']:
+        out.append(L['council'] + ': ' + '; '.join(council_line(i) for i in s['council'][:3]))
     if s['nxt']:
         out.append(L['next'] + ': ' + '; '.join(short(i, 40) for i in s['nxt'][:3]))
     if s['built']:
@@ -268,6 +332,7 @@ def status_md(r):
             lines.extend([f'## {title}', ''] + [fmt(i) for i in items] + [''])
     block(L['waiting'], s['waiting'], lambda i: f"- **{i['id']}** {i.get('title')} — {i.get('waits') or i.get('next') or ''}")
     block(L['doing_h'], s['doing'], lambda i: f"- **{i['id']}** {i.get('title')} → {i.get('next') or ''}")
+    block(L['council'], s['council'], lambda i: f"- **{i['id']}** {i.get('title')} — {council_line(i)}; {i['rounds'][-1].get('why') or ''}")
     block(L['next_h'], s['nxt'][:8], lambda i: f"- **{i['id']}** {i.get('title')} ({i.get('priority', '')}; {i.get('status')}; {i['_check']})")
     block(L['built_h'], s['built'], lambda i: f"- **{i['id']}** {i.get('title')}")
     block(L['lost_h'], r['orphans'], lambda o: f'- `{o}`')
@@ -325,6 +390,57 @@ def hook_session(inp):
     _emit({'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': text}})
 
 
+# ---------------------------------------------------------------- the council
+MARKS = {True: '✓', False: '✗', None: '?'}
+
+
+def council_cmd(a):
+    reg = jsonl(REG)
+    it = next((i for i in reg if i.get('id') == a[1]), None) if len(a) > 1 else None
+    if not it:
+        print('no item', ' '.join(a[1:2])); return 1
+    if a[0] == 'check':
+        root = a[a.index('--root') + 1] if '--root' in a and a.index('--root') + 1 < len(a) else ROOT
+        if not os.path.isdir(root):
+            print(L['no_root'], root); return 1
+        state, res, ctrl = probe_report(it, root)
+        for p, v in res:
+            print(f'  {MARKS[v]} {p}')
+        print(f"{it['id']} @ {root}: {state} ({sum(v is True for _, v in res)}/{len(res)})" + ('' if ctrl else ' · ' + L['cmp_ctrl']))
+        return 0 if ctrl else 2
+    if a[0] == 'compare':
+        cands = [x.partition('=') for x in a[2:] if '=' in x] or [('L', '=', '.')]
+        print(L['cmp_head'].format(id=it['id']))
+        scores = {}
+        for label, _, root in cands:
+            if not os.path.isdir(root):
+                print(f'  {label}: {L["no_root"]} {root}'); continue
+            state, res, ctrl = probe_report(it, root)
+            green = sum(v is True for _, v in res)
+            red = [p for p, v in res if v is False]
+            if ctrl:
+                scores[label] = green
+            print(f'  {label} ({root}): {state} {green}/{len(res)}' + (f" · ✗ {'; '.join(red)}" if red else '')
+                  + ('' if ctrl else ' · ' + L['cmp_ctrl']))
+        if scores:
+            top = max(scores.values())
+            print(L['cmp_best'].format(labels=', '.join(k for k, v in scores.items() if v == top)))
+        return 0
+    rec = json.loads(a[2]) if len(a) > 2 else {}                # 'round'
+    rounds = it.setdefault('rounds', [])
+    rounds.append({'n': len(rounds) + 1, 'date': today(), **rec})
+    it['touched'] = today()
+    write_jsonl(REG, reg)
+    n, stale, lead = council_state(it)
+    cc = CFG['council']
+    print(json.dumps(rounds[-1], ensure_ascii=False))
+    print(council_line(it))
+    why = L['why_stale'].format(s=stale) if stale >= cc['stop_after'] else (L['why_max'] if n >= cc['max_rounds'] else '')
+    print(L['council_stop'].format(why=why, lead=lead, id=it['id']) if why
+          else L['council_go'].format(n=n + 1, max=cc['max_rounds'], k=cc['candidates']))
+    return 0
+
+
 # ---------------------------------------------------------------- the commands
 def main(a):
     if not os.path.exists(REG):
@@ -349,10 +465,12 @@ def main(a):
         it = next((i for i in reg if i.get('id') == a[1]), None)
         if not it:
             print('no item', a[1]); return 1
-        for kv in a[2:]:
-            k, _, v = kv.partition('=')
+        pairs = [kv.partition('=') for kv in a[2:] if kv != '--force']
+        if it.get('rounds') and '--force' not in a and any(k in ('probes', 'rubric') for k, _, _ in pairs):
+            print(L['frozen'].format(id=it['id'], n=len(it['rounds']))); return 1
+        for k, _, v in pairs:
             if k:
-                it[k] = json.loads(v) if k == 'probes' else v
+                it[k] = json.loads(v) if k in ('probes', 'rubric') else v
         it['touched'] = today()
         write_jsonl(REG, reg)
         print(json.dumps(it, ensure_ascii=False))
@@ -369,6 +487,8 @@ def main(a):
         write_jsonl(INBOX, rows)
         print(json.dumps(it, ensure_ascii=False))
         return 0
+    if a[:1] in (['check'], ['compare'], ['round']):
+        return council_cmd(a)
     r = run()
     if a[:1] == ['json']:
         print(json.dumps(r, ensure_ascii=False, indent=1, default=str))
