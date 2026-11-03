@@ -21,6 +21,7 @@
 <p align="center">
   <a href="#install-in-2-minutes"><b>Install in 2 minutes</b></a> ·
   <a href="#how-it-works">How it works</a> ·
+  <a href="#council-mode-for-the-hard-ones">Council mode</a> ·
   <a href="#foreman-vs-the-alternatives">Foreman vs. the alternatives</a> ·
   <a href="#faq">FAQ</a> ·
   <a href="README.ru.md">Русская версия</a>
@@ -86,6 +87,30 @@ A promise is kept when its probes turn green. Six kinds of probes cover most of 
 
 Statuses you (or Claude, on your word) set by hand: `todo` · `doing` · `waiting` (for you) · `parked` · `accepted` (after **you** accept it) · `dropped` (only on your word). "Done" is never one of them: the probes decide.
 
+## Council mode: for the hard ones
+
+Some promises are hard: the first attempt fails its probes twice, or a wrong decision is expensive (architecture, data model, public API). For those, Foreman runs a **council**: a short, bounded search that keeps the best *verified* solution instead of endlessly rewriting the latest one.
+
+More rewriting is not more quality. A model that keeps polishing its own answer often makes it worse, and with a weak judge every extra round only adds confidence in a mistake. So the council is built around the parts that keep a search honest:
+
+1. **Criteria first.** The item's probes and a short rubric of soft criteria are fixed *before* the search. After the first round they're frozen: `foreman.py` refuses to change them without `--force`.
+2. **A kept leader.** The current version always competes. A new candidate replaces it only if it is verifiably better.
+3. **2–3 really different candidates** per round, each in its own git worktree. Irreversible actions (deploys, migrations, deletions) get candidate *plans*, never repeated executions.
+4. **The objective check:** `foreman.py compare` runs the same probes on every candidate side by side.
+5. **A blind judge:** the `foreman-judge` agent ranks anonymous candidates X/Y/Z by the frozen rubric, with evidence, without knowing which one is the leader. "Tie" is an allowed answer.
+6. **A journal and a stop rule:** `foreman.py round` logs every round and calls STOP after 2 rounds without a gain or 3 rounds in total. You get the **best** version found, not the last one, plus a short account of what was tried and rejected. If the choice is a matter of taste, the finalists come to you.
+
+```text
+$ python .foreman/foreman.py compare P-007 L=. A=../app-p007-a B=../app-p007-b
+P-007: comparison by probes (the objective part; meaning and taste go to the blind judge foreman-judge):
+  L (.): not 0/3 · ✗ file:src/csv.py; grep:src/csv.py:def export_csv; grep:web/index.html:Export CSV
+  A (../app-p007-a): partly 2/3 · ✗ grep:web/index.html:Export CSV
+  B (../app-p007-b): done 3/3
+Most green probes: B
+```
+
+Start one by saying **"council on P-007"** (or «консилиум», «подумай как следует»). Simple tasks don't need it: a council costs a few extra passes, and Foreman suggests it only where it pays off.
+
 ## Foreman vs. the alternatives
 
 **Foreman is not another task manager.** Task managers track the work an agent plans. Foreman guards the promises *you* made, in your own words, and proves they were kept. It's the part that's missing when the plan is fine but Monday's request still disappears.
@@ -98,6 +123,7 @@ Statuses you (or Claude, on your word) set by hand: `todo` · `doing` · `waitin
 | The checker verifies itself | ✅ control probes must fail | ❌ | ❌ | ❌ |
 | Restores open work after compaction | ✅ automatic, `SessionStart` hook | ➖ within its own session | ➖ when the agent queries it | ➖ when the agent reads it |
 | Flags regressions in accepted work | ✅ RED in the next brief | ❌ | ❌ | ❌ |
+| Hard cases: compares candidates, keeps the best verified one | ✅ council with a blind judge | ❌ | ❌ | ❌ |
 | Planning, task breakdown, kanban | ❌ not its job | ➖ a simple checklist | ✅ PRD → tasks with dependencies | ✅ kanban board and web UI |
 | What you install | one Python file, standard library | nothing, it's built in | Node.js package + a model provider or the Claude Code CLI | npm/bun/Homebrew/Nix package |
 
@@ -167,6 +193,8 @@ Nothing outside the project folder is touched.
 | The engine and your data | `.foreman/` (`foreman.py`, `promises.jsonl`, `inbox.jsonl`, `config.json`) | your registry is kept on every update |
 | Three hooks | `.claude/settings.local.json` | your personal settings file, usually not committed; the previous version is backed up to `.foreman/backup/` and your own hooks are kept |
 | The `foreman` agent | `.claude/agents/foreman.md` | |
+| The blind judge | `.claude/agents/foreman-judge.md` | used by the council |
+| The council procedure | `.claude/skills/foreman-council/SKILL.md` | loaded only when a council runs |
 | A rules section | `CLAUDE.md`, between `<!-- foreman:start -->` and `<!-- foreman:end -->` | the rest of the file is left alone |
 
 </details>
@@ -200,6 +228,11 @@ python .foreman/foreman.py add '{"title": "…", "quote": "…", "probes": ["fil
 python .foreman/foreman.py set P-003 status=parked next="…"
 python .foreman/foreman.py take I-0002 --as P-007     # or: skip I-0002 --why "a question, not a task"
 python .foreman/foreman.py selftest
+
+# council
+python .foreman/foreman.py check P-007 --root ../app-p007-a     # one item's probes on another folder
+python .foreman/foreman.py compare P-007 L=. A=../app-p007-a B=../app-p007-b
+python .foreman/foreman.py round P-007 '{"tried": ["L","A","B"], "winner": "B", "accepted": true, "why": "…"}'
 ```
 
 ## Configuration
@@ -213,6 +246,7 @@ python .foreman/foreman.py selftest
 | `allow_cmd` | `false` | allow `cmd:` probes (they run shell commands) |
 | `orphans` | empty | find abandoned files nothing references, e.g. `{"candidates": ["src/**/*.py"], "corpus": ["**/*.py", "**/*.md"]}` |
 | `extra_ask_cues` | `[]` | your own regex cues that mark a message as a request |
+| `council` | `{"candidates": 2, "max_rounds": 3, "stop_after": 2}` | candidates per round, the round limit, and how many rounds without a gain stop the council |
 
 ## Uninstall
 
