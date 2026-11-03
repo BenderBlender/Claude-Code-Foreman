@@ -8,6 +8,8 @@ Windows: double-click install.bat (or drag the project folder onto it). macOS / 
 What it does (nothing outside PROJECT_DIR is touched):
   PROJECT/.foreman/            foreman.py (the engine), config.json, promises.jsonl, inbox.jsonl — your data, kept on update
   PROJECT/.claude/agents/foreman.md            the thin «foreman» agent (judges, writes the one-screen status)
+  PROJECT/.claude/agents/foreman-judge.md      the blind judge of the council (ranks anonymous candidates by a frozen rubric)
+  PROJECT/.claude/skills/foreman-council/      the council procedure for hard items (a search that keeps the best verified version)
   PROJECT/.claude/settings.local.json          three hooks (UserPromptSubmit «inbox», Stop «stop», SessionStart «session») —
                                                the LOCAL settings file (personal, not committed); the old file is backed up first
   PROJECT/CLAUDE.md                            a section between <!-- foreman:start --> and <!-- foreman:end --> (the rules)
@@ -31,10 +33,11 @@ TXT = {
            'next': ['Перезапустите Claude Code в этом проекте (или откройте /hooks и примите изменения) — хуки подхватятся.',
                     'Пишите просьбы как обычно: каждая попадёт во «входящие», а Claude заведёт по ней пункт с проверками.',
                     'Спросите «что у нас по проекту?» — Claude покажет сводку и позовёт агента foreman для подробного отчёта.',
+                    'Сложный пункт? Скажите «консилиум по P-…» — Claude сравнит 2–3 варианта и оставит лучший проверенный, а не последний.',
                     'Реестр: .foreman/promises.jsonl · сводка вручную: python .foreman/foreman.py brief'],
            'selftest_ok': 'Самопроверка: контроль сработал (подставные пробы провалились), хук сводки отвечает.',
            'selftest_bad': 'ВНИМАНИЕ: самопроверка не прошла — пришлите вывод выше разработчику.',
-           'backup': 'Копия прежних настроек: {p}', 'un_done': 'Прораб убран (хуки, агент, раздел CLAUDE.md).',
+           'backup': 'Копия прежних настроек: {p}', 'un_done': 'Прораб убран (хуки, агенты, навык консилиума, раздел CLAUDE.md).',
            'un_kept': 'Ваши данные остались в .foreman/ (удалить: --purge — папка будет отложена в сторону, не стёрта).',
            'purged': 'Папка .foreman отложена: {p}', 'yes': ('д', 'да', 'y', 'yes')},
     'en': {'ask_dir': 'Drag the project folder here (or type its path) and press Enter: ', 'no_dir': 'No such folder: {p}',
@@ -43,10 +46,11 @@ TXT = {
            'next': ['Restart Claude Code in this project (or open /hooks and accept the changes) — the hooks will load.',
                     'Ask for things as usual: every ask goes into the inbox and Claude files a promise with checks for it.',
                     'Ask "what is the project status?" — Claude shows the brief and calls the foreman agent for a full report.',
+                    'A hard item? Say "council on P-…" — Claude compares 2–3 versions and keeps the best verified one, not the latest.',
                     'Registry: .foreman/promises.jsonl · brief by hand: python .foreman/foreman.py brief'],
            'selftest_ok': 'Self-test: the control worked (the fake probes failed), the session hook answers.',
            'selftest_bad': 'WARNING: the self-test failed — send the output above to the developer.',
-           'backup': 'Previous settings backed up: {p}', 'un_done': 'Foreman removed (hooks, agent, CLAUDE.md section).',
+           'backup': 'Previous settings backed up: {p}', 'un_done': 'Foreman removed (hooks, agents, the council skill, CLAUDE.md section).',
            'un_kept': 'Your data stays in .foreman/ (to remove: --purge — the folder is moved aside, not erased).',
            'purged': 'The .foreman folder moved aside: {p}', 'yes': ('y', 'yes', 'д', 'да')},
 }
@@ -147,12 +151,17 @@ def install(proj, lang, yes_all):
     shutil.copy2(os.path.join(KIT, 'foreman', 'foreman.py'), os.path.join(fdir, 'foreman.py'))
     cfg = read_json(os.path.join(fdir, 'config.json'), {})
     cfg = {'lang': lang, 'stale_days': 3, 'allow_cmd': False, 'orphans': {'candidates': [], 'corpus': []}, 'extra_ask_cues': [], **cfg, 'lang': lang}
+    cfg['council'] = {'candidates': 2, 'max_rounds': 3, 'stop_after': 2, **(cfg.get('council') or {})}
     write_json(os.path.join(fdir, 'config.json'), cfg)
     for n in ('promises.jsonl', 'inbox.jsonl'):
         io.open(os.path.join(fdir, n), 'a', encoding='utf-8').close()
     agents = os.path.join(proj, '.claude', 'agents')
     os.makedirs(agents, exist_ok=True)
     shutil.copy2(os.path.join(KIT, 'foreman', 'agent_foreman.md'), os.path.join(agents, 'foreman.md'))
+    shutil.copy2(os.path.join(KIT, 'foreman', 'agent_judge.md'), os.path.join(agents, 'foreman-judge.md'))
+    skill = os.path.join(proj, '.claude', 'skills', 'foreman-council')
+    os.makedirs(skill, exist_ok=True)
+    shutil.copy2(os.path.join(KIT, 'foreman', 'skill_council.md'), os.path.join(skill, 'SKILL.md'))
     sp = os.path.join(proj, '.claude', 'settings.local.json')
     if os.path.exists(sp):
         os.makedirs(os.path.join(fdir, 'backup'), exist_ok=True)
@@ -193,9 +202,15 @@ def uninstall(proj, purge, yes_all):
     sp = os.path.join(proj, '.claude', 'settings.local.json')
     if os.path.exists(sp):
         write_json(sp, strip_ours(read_json(sp, {})))
-    ag = os.path.join(proj, '.claude', 'agents', 'foreman.md')
-    if os.path.exists(ag):
-        os.remove(ag)
+    for ag in ('foreman.md', 'foreman-judge.md'):
+        ag = os.path.join(proj, '.claude', 'agents', ag)
+        if os.path.exists(ag):
+            os.remove(ag)
+    skill = os.path.join(proj, '.claude', 'skills', 'foreman-council')
+    if os.path.exists(os.path.join(skill, 'SKILL.md')):
+        os.remove(os.path.join(skill, 'SKILL.md'))
+        if not os.listdir(skill):
+            os.rmdir(skill)
     claude_section(proj, 'ru', remove=True)
     out(L['un_done'])
     fdir = os.path.join(proj, '.foreman')

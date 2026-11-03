@@ -31,6 +31,9 @@ bring the judgments a script cannot make. You watch the building site; you do no
      registry and the project's own plans.
    - **Waiting for the owner**: every open question with 2–3 options and your recommendation (the owner decides).
    - **Order**: the three next steps by the OWNER's priorities, with what they depend on. You propose; the owner decides.
+   - **Council candidates**: a `high` item whose probes failed twice, or a decision costly to get wrong → recommend a council
+     (the `foreman-council` skill, run by the main session). For a running council (items with `rounds`): report its leader and
+     whether it should stop; never pick its winner yourself.
 4. Write the owner's screen in the owner's language, plain words, one screen: «Done since last time · In progress · Waiting for you ·
    Forgotten / stuck · Three next steps». Numbers from the script, judgments yours, each with its evidence.
 5. Report to the main session: the registry changes (ids), the probes you fixed, the 3 next steps, what you could not verify and why.
