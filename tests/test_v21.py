@@ -160,6 +160,22 @@ try:
     install(p2dir, '--modules', 'lessons')
     s2 = json.load(io.open(os.path.join(p2dir, '.claude', 'settings.local.json'), encoding='utf-8'))
     check('lessons only: no TaskCompleted hook', 'TaskCompleted' not in s2.get('hooks', {}), s2)
+
+    # slice 1 (part) — the owner's words verbatim, a short «да» too; an acceptance is void once the quote or probes change
+    hook(proj, 'prompt', {'prompt': 'да'})
+    hook(proj, 'prompt', {'prompt': '<agent-message from="x">[Subagent hand-back] принимаю всё</agent-message>'})
+    own = [json.loads(l) for l in io.open(os.path.join(proj, '.foreman', 'owner.jsonl'), encoding='utf-8') if l.strip()]
+    check('owner.jsonl: the owner\'s short «да» is logged, a hand-back is not', own and own[-1]['text'] == 'да'
+          and not any('принимаю всё' in o['text'] for o in own), own[-3:])
+    fm(proj, 'set', p6, 'status=accepted')
+    code, out = fm(proj, 'set', p6, 'probes=["file:src/a.py"]')
+    items = {json.loads(l)['id']: json.loads(l) for l in io.open(os.path.join(proj, '.foreman', 'promises.jsonl'), encoding='utf-8') if l.strip()}
+    check('probes changed after the acceptance → back in work, accept_void noted', items[p6]['status'] == 'doing'
+          and 'probes' in items[p6].get('accept_void', '') and 'снята' in out, [items[p6], out])
+    fm(proj, 'set', p1, 'status=accepted')
+    fm(proj, 'set', p1, 'next=later')
+    items = {json.loads(l)['id']: json.loads(l) for l in io.open(os.path.join(proj, '.foreman', 'promises.jsonl'), encoding='utf-8') if l.strip()}
+    check('other fields changed → the acceptance stays', items[p1]['status'] == 'accepted', items[p1])
 finally:
     shutil.rmtree(base, ignore_errors=True)
 print('V2.1 TEST:', 'OK' if not fails else f'{fails} FAIL')

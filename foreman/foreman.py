@@ -51,6 +51,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, os.pardir))
 PROJECT = ROOT          # (ROOT is swapped while a candidate's folder is checked; PROJECT never is)
 REG, INBOX, STATUS, CONFIG = (os.path.join(HERE, n) for n in ('promises.jsonl', 'inbox.jsonl', 'STATUS.md', 'config.json'))
+OWNER = os.path.join(HERE, 'owner.jsonl')                   # (the owner's last 50 messages verbatim — what «accepted» is checked against, 2.1)
 OPEN = ('todo', 'doing', 'waiting', 'parked')
 PRIO = {'high': 0, 'normal': 1, 'later': 2}
 CONTROLS = [{'id': 'CTRL-1', 'probes': ['file:.foreman/__control_never_exists__.txt']},
@@ -70,6 +71,7 @@ T = {
            'stale': 'В работе без движения > {d} дн.', 'orphans': 'Сироты (файл, на который никто не ссылается)',
            'inbox': 'Входящие просьбы НЕ разобраны: {n} — {list} → foreman.py add {{…}} + take I-… --as P-…, или skip I-… --why «…»',
            'ctrl_ok': 'Контроль: ок (подставные пробы провалились)', 'ctrl_bad': 'Контроль СЛОМАН — подставная проба прошла, пробам не верить',
+           'accept_void': 'ПРОРАБ: приёмка {id} снята — после неё изменено: {what}. Пункт снова «в работе»; принять заново может только владелец.',
            'task_red': 'ПРОРАБ: задача называет {id}, но у пункта красные пробы: {probes}. Доделай — или скажи владельцу, почему закрываешь.', 'why': {'down': 'не отвечает', 'cmd-off': 'cmd: выключен (config allow_cmd)', 'no-files': 'шаблон не нашёл ни одного файла', 'bad-regex': 'сломанная регулярка', 'timeout': 'таймаут', 'no-access': 'нет доступа', 'unknown-kind': 'неизвестный вид пробы'},
            'park': 'Парковка: новая просьба посреди работы → текущему пункту set P-… status=parked next="…", потом новое.',
            'status_title': '# Состояние проекта — {when}', 'status_lead': 'Реестр: {n} пунктов. По проверке: готово {ok}, частично {part}, не сделано {no}.',
@@ -106,6 +108,7 @@ T = {
            'stale': 'In progress with no move > {d} days', 'orphans': 'Orphans (a file nothing references)',
            'inbox': 'Unprocessed asks in the inbox: {n} — {list} → foreman.py add {{…}} + take I-… --as P-…, or skip I-… --why "…"',
            'ctrl_ok': 'Control: ok (the fake probes failed)', 'ctrl_bad': 'Control BROKEN — a fake probe passed, do not trust the probes',
+           'accept_void': 'FOREMAN: the acceptance of {id} is void — changed after it: {what}. The item is back in work; only the owner can accept it again.',
            'task_red': 'FOREMAN: the task names {id}, but the item has red probes: {probes}. Finish it — or tell the owner why you close it.', 'why': {'down': 'does not answer', 'cmd-off': 'cmd: is off (config allow_cmd)', 'no-files': 'the pattern found no file', 'bad-regex': 'a broken regex', 'timeout': 'timeout', 'no-access': 'no access', 'unknown-kind': 'an unknown probe kind'},
            'park': 'Parking: a new ask mid-work → set P-… status=parked next="…" on the current item first, then the new one.',
            'status_title': '# Project status — {when}', 'status_lead': 'Registry: {n} items. By the check: done {ok}, partly {part}, not done {no}.',
@@ -495,6 +498,11 @@ def _emit(o):
 EVENTS = os.path.join(HERE, 'events.jsonl')
 
 
+def append_event(row):
+    with io.open(EVENTS, 'a', encoding='utf-8', newline='\n') as f:
+        f.write(json.dumps({'ts': dt.datetime.now().isoformat(timespec='seconds'), 'by': 'foreman', **row}, ensure_ascii=False) + '\n')
+
+
 def owner_events():
     """the owner's unseen moves on the board (2.1) → one line, ≤ 300 chars; marked seen"""
     rows = jsonl(EVENTS)
@@ -526,7 +534,10 @@ def hook_prompt(inp):
     """UserPromptSubmit: an ask → the inbox; a correction → the lesson protocol; the rules that fit the message; the owner's board
     moves. An ordinary message costs 0 characters (dsh-superagent: take as little attention as possible)"""
     prompt = re.sub(r'<system-reminder[^>]*>[\s\S]*?</system-reminder[^>]*>', '', str(inp.get('prompt') or '')).strip()
-    if not prompt or AGENT_NOTE.match(prompt) or '[Subagent hand-back]' in prompt[:400] or SHORT.match(prompt) or len(prompt) < 12:
+    if not prompt or AGENT_NOTE.match(prompt) or '[Subagent hand-back]' in prompt[:400]:
+        return
+    owner_log(prompt)                                       # (a short «да» counts here: it may be the yes to an «accept?»)
+    if SHORT.match(prompt) or len(prompt) < 12:
         return
     events = owner_events() if CFG['modules'].get('board') else ''
     note = ''
@@ -554,6 +565,12 @@ def hook_prompt(inp):
 
 
 hook_inbox = hook_prompt                                    # (1.1 settings call «hook inbox» — still works)
+
+
+def owner_log(text):
+    rows = jsonl(OWNER)[-49:]
+    rows.append({'ts': dt.datetime.now().isoformat(timespec='seconds'), 'text': text[:4000]})
+    write_jsonl(OWNER, rows)
 
 
 def hook_task(inp):
@@ -771,12 +788,20 @@ def commands(a):
         for k, _, _ in pairs:
             if k in ('id', 'rounds', 'council') and not force:      # (review 04.11: «set rounds=…» unfroze and broke the brief)
                 print(L['guarded'].format(k=k)); return 1
+        was = {k: it.get(k) for k in ('status', 'quote', 'probes')}
         try:
             for k, _, v in pairs:
                 if k:
                     it[k] = arg_json(v) if k in ('probes', 'rubric', 'rounds', 'rank', 'comments', 'blocked_by', 'tags') else v
         except ValueError as e:
             print(L['bad_json'].format(err=e)); return 1
+        changed = [k for k in ('quote', 'probes') if it.get(k) != was[k]]
+        if was['status'] == 'accepted' and changed and it.get('status') == 'accepted':
+            # (an acceptance covers THAT quote with THOSE probes — VisionForge: edited after it, the item is back in work, 2.1)
+            it['status'] = 'doing'
+            it['accept_void'] = f"{today()}: {', '.join(changed)}"
+            append_event({'kind': 'accept_void', 'id': it['id'], 'changed': changed})
+            print(L['accept_void'].format(id=it['id'], what=', '.join(changed)))
         if 'rounds' in it and not isinstance(it['rounds'], list):
             print(L['guarded'].format(k='rounds')); return 1
         it['touched'] = today()
