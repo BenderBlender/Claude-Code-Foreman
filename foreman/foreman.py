@@ -573,11 +573,12 @@ def lessons_lines():
 
 
 def hook_session(inp):
-    text = brief(run())
-    if inp.get('source') == 'compact':
+    text = brief(run()) if CFG['modules'].get('promises') else ''   # (promises off — e.g. a project with its own registry: no empty brief)
+    if inp.get('source') == 'compact' and text:
         text = L['compact'] + '\n' + text
     text = fit([text[:1200]] + lessons_lines() + [owner_events() if CFG['modules'].get('board') else ''], CFG['budget']['session_chars'])
-    _emit({'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': text}})
+    if text:
+        _emit({'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': text}})
 
 
 # ---------------------------------------------------------------- the council

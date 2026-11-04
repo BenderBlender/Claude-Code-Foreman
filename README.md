@@ -166,6 +166,14 @@ of three models (Claude Fable, Gemini, GPT) on 4 November 2026.
 
 <sub>✅ yes · ➖ partly or indirectly · ❌ no. Based on each project's public documentation as of November 2026; if something here is out of date, please <a href="https://github.com/BenderBlender/Claude-Code-Foreman/issues">open an issue</a>.</sub>
 
+**Closer neighbours, each strong at one part** (checked against their own docs, November 2026):
+[claude-reflect](https://github.com/BayramAnnakov/claude-reflect) turns your corrections into permanent instructions (mature, many tests),
+but it does not block a turn and does not keep a registry of your asks;
+[claim-check](https://github.com/Arnav66692/claim-check) blocks a run when the agent's "created / ran / tests pass" claim is false —
+a Stop gate on claims, not on your requests; [claude-task-tracker](https://github.com/ProblemFactory/claude-task-tracker) logs requests
+passively in the AI's own words. Foreman's combination — your asks verbatim + probes that compute "done" + a control that checks the
+checker + lessons that must leave a record + a council — we have not found elsewhere; if you know a tool that does it, tell us.
+
 **Why people pick Foreman:**
 
 - **Zero effort.** You don't change how you talk to Claude. The hooks do the bookkeeping.
@@ -298,7 +306,8 @@ In Windows PowerShell 5.1 the quotes inside a JSON argument get stripped: put th
 | `budget` | `{"prompt_chars": 1200, "session_chars": 2000, "recall_hits": 3, "recall_chars": 700, "hot_rows": 5}` | hard caps on what the hooks add to the context |
 | `lessons.stop_gate` | `"correction"` | `"off"`: never block; `"correction"`: block a correction without a record; `"all"`: teachings too |
 | `lessons.extra_correction_cues` / `extra_teaching_cues` | `[]` | your own regex cues |
-| `lessons.rules_extra` | `[]` | globs of an existing rule book (markdown tables / `###` sections) to search read-only |
+| `lessons.rules_extra` | `[]` | globs of an existing rule book (markdown tables / `###` sections) to search read-only; a book with laws (`### P1 · …` sections, rows tagged `[P1]`) gets the law layer: the rows of the law the situation falls under rank higher |
+| `lessons.record_paths` | `[]` | regexes of your own files whose edit also counts as a lesson record at the Stop gate (e.g. your rule book) |
 | `lessons.memory_dir` | `"auto"` | Claude Code's memory folder (read-only); `auto` finds `~/.claude/projects/<project>/memory` |
 
 ## Uninstall

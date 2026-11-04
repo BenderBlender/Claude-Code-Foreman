@@ -39,7 +39,7 @@ ROOT = os.path.abspath(os.path.join(HERE, os.pardir))
 RULES, LEDGER, EVAL, EVENTS, LEXICON, RULES_MD = (os.path.join(HERE, n) for n in
                                                   ('rules.jsonl', 'ledger.md', 'eval.jsonl', 'events.jsonl', 'lexicon.json', 'RULES.md'))
 DEFAULTS = {'stop_gate': 'correction', 'extra_correction_cues': [], 'extra_teaching_cues': [], 'rules_extra': [],
-            'memory_dir': 'auto', 'index_skills': True}
+            'record_paths': [], 'memory_dir': 'auto', 'index_skills': True}
 BUDGET = {'prompt_chars': 1200, 'session_chars': 2000, 'recall_hits': 3, 'recall_chars': 700, 'hot_rows': 5}
 CFG, LANG, LX = {'lessons': dict(DEFAULTS), 'budget': dict(BUDGET)}, 'ru', {}
 
@@ -534,13 +534,16 @@ def lesson_gate(transcript_path):
     if idx < 0 or not (cls['correction'] or (mode == 'all' and cls['teaching'])):
         return ''
     recorded, last_text = False, ''
+    # (a project with its own rule book: writing into it counts as a record too — `lessons.record_paths`, regexes)
+    extra = [re.compile(x, re.I) for x in CFG['lessons'].get('record_paths') or []]
     for e in ev[idx + 1:]:
         if e.get('type') != 'assistant':
             continue
         for b in _content(e):
             if b.get('type') == 'tool_use' and b.get('name') in ('Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell'):
                 inp = b.get('input') or {}
-                if KNOWLEDGE.search(str(inp.get('file_path') or inp.get('path') or inp.get('command') or '')):
+                target = str(inp.get('file_path') or inp.get('path') or inp.get('command') or '')
+                if KNOWLEDGE.search(target) or any(x.search(target) for x in extra):
                     recorded = True
             elif b.get('type') == 'text' and b.get('text'):
                 last_text = b['text']

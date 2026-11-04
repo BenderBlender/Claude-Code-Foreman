@@ -175,7 +175,7 @@ def install(proj, lang, yes_all, modules=None):
         cfg['modules'] = {m: m in modules for m in ('promises', 'lessons', 'board')}
     cfg['budget'] = {'prompt_chars': 1200, 'session_chars': 2000, 'recall_hits': 3, 'recall_chars': 700, 'hot_rows': 5, **(cfg.get('budget') or {})}
     cfg['lessons'] = {'stop_gate': 'correction', 'extra_correction_cues': [], 'extra_teaching_cues': [], 'rules_extra': [],
-                      'memory_dir': 'auto', 'index_skills': True, **(cfg.get('lessons') or {})}
+                      'record_paths': [], 'memory_dir': 'auto', 'index_skills': True, **(cfg.get('lessons') or {})}
     write_json(os.path.join(fdir, 'config.json'), cfg)
     for n in ('promises.jsonl', 'inbox.jsonl', 'rules.jsonl', 'eval.jsonl', 'events.jsonl'):
         io.open(os.path.join(fdir, n), 'a', encoding='utf-8').close()
