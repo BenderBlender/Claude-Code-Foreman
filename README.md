@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/foreman-banner.webp" alt="Foreman (Прораб): a project's promises don't get lost. For Claude Code." width="100%">
+  <img src="assets/foreman-banner-2.webp" alt="Foreman (Прораб): a project's promises don't get lost. For Claude Code. Council mode for the hard ones." width="100%">
 </p>
 
 <h1 align="center">Foreman · Прораб</h1>
@@ -22,6 +22,7 @@
   <a href="#install-in-2-minutes"><b>Install in 2 minutes</b></a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#council-mode-for-the-hard-ones">Council mode</a> ·
+  <a href="#lessons-foreman-learns-from-your-corrections-20">Lessons (2.0)</a> ·
   <a href="#foreman-vs-the-alternatives">Foreman vs. the alternatives</a> ·
   <a href="#faq">FAQ</a> ·
   <a href="README.ru.md">Русская версия</a>
@@ -111,6 +112,41 @@ Most green probes: B
 
 Start one by saying **"council on P-007"** (or «консилиум», «подумай как следует»). Simple tasks don't need it: a council costs a few extra passes, and Foreman suggests it only where it pays off.
 
+## Lessons: Foreman learns from your corrections (2.0)
+
+Promises say **what** you asked for. Lessons say **how** you want things done. When you correct Claude ("again you sent a giant table,
+nothing is readable"), the correction should not vanish with the session either.
+
+- **A correction becomes a rule** in `.foreman/rules.jsonl`: *when* (the situation) → *do* (the operation) + your words **verbatim** + a few
+  RU/EN keywords. A rule Claude writes is born **proposed**; it becomes **active** only on your word (`rule accept R-003`). An agent's guess
+  is never a law.
+- **Found again before the next action.** The prompt hook searches your rules (stemmed Russian and English, synonyms, BM25 with a
+  trigger field) and shows the 1–3 that fit the message. An ordinary message costs **zero** characters; a hard cap of 1,200 characters per
+  message keeps the context small.
+- **A correction must leave a record.** If your last message looks like a correction (cues in Russian and English, such as «опять»,
+  "you forgot", "I told you"), the end of the turn is blocked until a rule was really written (a write to the rules or the ledger since
+  your message) or Claude explains «not a correction: …». The words "recorded" alone don't count.
+- **A ladder for repeats:** level 0 note → 1 rule (recalled by words) → 2 hot (always in the session brief) → 3 **guard**: a probe
+  checked at the end of every turn (`nogrep:README.md:TODO`). A guard that turns red blocks once; one red from the start never locks you out.
+- **Measured, not hoped.** Each rule keeps the message it came from (and optionally one it must NOT fire on); `recall --eval` reports
+  recall@3 and false positives on your own project.
+- **Works with Claude Code's own memory.** Foreman reads it (and `CLAUDE.md`, your skills) as a source and never writes there: your rulings go
+  to `rules.jsonl`, Claude's working notes stay in its memory.
+- **Empty start.** A new project has no rules and pays nothing until your first correction. Don't want lessons? Install with
+  `--modules promises`.
+
+```text
+FOREMAN·lesson: looks like a CORRECTION («again»). Before the turn ends: (1) already a rule? (recall) … (5) ONE rule: python
+.foreman/foreman.py rule add '{"when", "do", "quote": verbatim, "keys"}' --situation "<this message>". End the reply with
+«recorded: R-…» (after writing it) or «not a correction: <why>».
+FOREMAN·recall (by the message):
+  R-003 before sending a comparison sheet → one big picture per variant («the table is unreadable»)
+```
+
+Where it comes from: the memory system of the project Foreman was born in (itself grown from
+[google-research/harness2](https://github.com/google-research/harness2)), cut down to what any project can use, and decided by a council
+of three models (Claude Fable, Gemini, GPT) on 4 November 2026.
+
 ## Foreman vs. the alternatives
 
 **Foreman is not another task manager.** Task managers track the work an agent plans. Foreman guards the promises *you* made, in your own words, and proves they were kept. It's the part that's missing when the plan is fine but Monday's request still disappears.
@@ -124,6 +160,7 @@ Start one by saying **"council on P-007"** (or «консилиум», «под�
 | Restores open work after compaction | ✅ automatic, `SessionStart` hook | ➖ within its own session | ➖ when the agent queries it | ➖ when the agent reads it |
 | Flags regressions in accepted work | ✅ RED in the next brief | ❌ | ❌ | ❌ |
 | Hard cases: compares candidates, keeps the best verified one | ✅ council with a blind judge | ❌ | ❌ | ❌ |
+| Learns from your corrections: your words become a rule, found again and enforced | ✅ lessons, Stop gate, guards | ➖ Claude's own notes (memory), not enforced | ❌ | ❌ |
 | Planning, task breakdown, kanban | ❌ not its job | ➖ a simple checklist | ✅ PRD → tasks with dependencies | ✅ kanban board and web UI |
 | What you install | one Python file, standard library | nothing, it's built in | Node.js package + a model provider or the Claude Code CLI | npm/bun/Homebrew/Nix package |
 
@@ -191,6 +228,7 @@ Nothing outside the project folder is touched.
 | What | Where | Notes |
 |---|---|---|
 | The engine and your data | `.foreman/` (`foreman.py`, `promises.jsonl`, `inbox.jsonl`, `config.json`) | your registry is kept on every update |
+| Lessons (2.0) | `.foreman/` (`recall.py`, `lexicon.json`, `rules.jsonl`, `ledger.md`, `eval.jsonl`, `events.jsonl`, `RULES.md`) | `lexicon.json` is yours to extend and is never overwritten |
 | Three hooks | `.claude/settings.local.json` | your personal settings file, usually not committed; the previous version is backed up to `.foreman/backup/` and your own hooks are kept |
 | The `foreman` agent | `.claude/agents/foreman.md` | |
 | The blind judge | `.claude/agents/foreman-judge.md` | used by the council |
@@ -233,7 +271,16 @@ python .foreman/foreman.py selftest
 python .foreman/foreman.py check P-007 --root ../app-p007-a     # one item's probes on another folder
 python .foreman/foreman.py compare P-007 L=. A=../app-p007-a B=../app-p007-b
 python .foreman/foreman.py round P-007 '{"tried": ["L","A","B"], "winner": "B", "accepted": true, "why": "…"}'
+
+# lessons (2.0)
+python .foreman/foreman.py recall send a comparison of variants       # the rules that fit what you are about to do
+python .foreman/foreman.py rule add '{"when": "…", "do": "…", "quote": "…", "keys": "…"}' --situation "the owner's message"
+python .foreman/foreman.py rule accept R-003      # the owner's word: proposed → active
+python .foreman/foreman.py rule set R-003 hot=true                     # level 2: always in the brief (active rules only)
+python .foreman/foreman.py rule set R-003 guard=nogrep:README.md:TODO level=3
+python .foreman/foreman.py recall --eval          # recall@3 and false positives on your own cases
 ```
+In Windows PowerShell 5.1 the quotes inside a JSON argument get stripped: put the JSON in a file and pass `@rule.json`.
 
 ## Configuration
 
@@ -247,6 +294,12 @@ python .foreman/foreman.py round P-007 '{"tried": ["L","A","B"], "winner": "B", 
 | `orphans` | empty | find abandoned files nothing references, e.g. `{"candidates": ["src/**/*.py"], "corpus": ["**/*.py", "**/*.md"]}` |
 | `extra_ask_cues` | `[]` | your own regex cues that mark a message as a request |
 | `council` | `{"candidates": 2, "max_rounds": 3, "stop_after": 2}` | candidates per round, the round limit, and how many rounds without a gain stop the council |
+| `modules` | `{"promises": true, "lessons": true, "board": false}` | a module that is off adds nothing to any hook (`install.py --modules promises`) |
+| `budget` | `{"prompt_chars": 1200, "session_chars": 2000, "recall_hits": 3, "recall_chars": 700, "hot_rows": 5}` | hard caps on what the hooks add to the context |
+| `lessons.stop_gate` | `"correction"` | `"off"`: never block; `"correction"`: block a correction without a record; `"all"`: teachings too |
+| `lessons.extra_correction_cues` / `extra_teaching_cues` | `[]` | your own regex cues |
+| `lessons.rules_extra` | `[]` | globs of an existing rule book (markdown tables / `###` sections) to search read-only |
+| `lessons.memory_dir` | `"auto"` | Claude Code's memory folder (read-only); `auto` finds `~/.claude/projects/<project>/memory` |
 
 ## Uninstall
 
@@ -292,6 +345,26 @@ Yes. Request cues are built in for both English and Russian, whatever the messag
 <summary><b>The server was down and my <code>get:</code> probe failed. Is the item now "not built"?</b></summary>
 
 No. A server that doesn't answer makes the probe "not checked", never "not built". Foreman won't call your work missing just because a server is offline.
+</details>
+
+<details>
+<summary><b>Does it fight with Claude Code's own memory?</b></summary>
+
+No. Foreman only reads Claude Code's memory folder (and `CLAUDE.md`, your skills) to find what fits a message. It never writes there. Your
+rulings live in `.foreman/rules.jsonl` with your exact words; Claude's own notes stay where Claude keeps them.
+</details>
+
+<details>
+<summary><b>I don't want the lessons, only the promises.</b></summary>
+
+Install with `--modules promises` (or set `"modules": {"lessons": false}` in `.foreman/config.json`). An off module adds nothing to any hook.
+</details>
+
+<details>
+<summary><b>How much context do the hooks cost?</b></summary>
+
+An ordinary message: nothing. A request: one short inbox line. A correction: the lesson protocol plus at most three fitting rules, never
+more than 1,200 characters in all. The session start: the brief plus hot rules, at most 2,000 characters. All caps are in `budget`.
 </details>
 
 ## The story
