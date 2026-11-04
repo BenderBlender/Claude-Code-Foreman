@@ -93,7 +93,7 @@ that finds nothing — is **unknown**, with its reason (`check P-007` shows it),
 
 Statuses you (or Claude, on your word) set by hand: `todo` · `doing` · `waiting` (for you) · `parked` · `accepted` (after **you** accept it) · `dropped` (only on your word). "Done" is never one of them: the probes decide.
 An acceptance covers *that* quote with *those* probes: change either afterwards and the item goes back to `doing` (`accept_void`), until you
-accept it again (2.1). In the terminal version of Claude Code, its own task list is guarded too: a task that names `P-…` cannot be marked
+accept it again (2.1). Claude Code's own task list is guarded too (wherever Claude uses its task tools): a task that names `P-…` cannot be marked
 completed while that item has a red probe (the `TaskCompleted` hook).
 
 ## Council mode: for the hard ones
@@ -161,6 +161,37 @@ FOREMAN·recall (by the message):
 Where it comes from: the memory system of the project Foreman was born in (itself grown from
 [google-research/harness2](https://github.com/google-research/harness2)), cut down to what any project can use, and decided by a council
 of three models (Claude Fable, Gemini, GPT) on 4 November 2026.
+
+## The board: every item on one page (2.1)
+
+`python .foreman/foreman.py board` (on Windows: double-click `.foreman/board.bat`) opens a local page with **every** item of the
+registry — not only those that wait for you:
+
+- **Columns are statuses**: to do · doing · waiting for you · parked · inbox, plus the folded rails «accepted» and «dropped».
+  Drag a card to another column — its status changes; drag it within a column — that is its priority (`rank`), and the brief follows
+  your order. "Done" is never a column: the probes decide.
+- **«Waiting for you»** on top — one honest list (its length is the number in its title): items waiting for your decision, green items
+  not yet accepted, accepted items gone red, unsorted asks, rules waiting for your «yes» — each with buttons right on the line.
+  **«What is broken»** shows only when something is.
+- **The item panel**: the quote verbatim, the next step, the probes (✓ ✗ ?, with the reason for «unknown»), comments with an input
+  field, the item's history. **Accept** asks once more — and it is your word: the click writes a line to the owner's log.
+- **Claude sees your moves** at your next message: «FOREMAN·board (owner): P-017 → waiting, comment «…»; order changed».
+- **Several registries on one board.** Besides its own, Foreman shows any registry whose command speaks `--json --light / --set /
+  --rank / --comment / --accept / --skip` (`board.registries`, kind `cli`, with its own status words) — each written only through its
+  own command, so its own guards apply.
+- **Safety:** 127.0.0.1 only; the start key is printed to YOUR terminal (without a terminal the board starts only with
+  `--token-file`); if Claude changed an item meanwhile you get a red bar with «Retry» instead of an overwrite.
+
+<p align="center"><img src="assets/board-2560.png" alt="The Foreman board on a 2560×1440 screen: the strips «Waiting for you» and «What is broken» on top, five columns of cards below" width="100%"></p>
+
+## Who checks the checker (2.1)
+
+- **«Accepted» only with your words.** Foreman logs your messages verbatim (`.foreman/owner.jsonl`); `set P-007 status=accepted` and
+  `rule accept R-003` need `--quote "<your words>"`, checked against that log (a paraphrase is refused; a short «yes» counts only as the
+  answer to a reply that named the item). Changing an accepted item's quote or probes takes the acceptance back.
+- **The edit gate.** A turn that wrote Foreman's own files, the hook settings or your guarded paths directly (not through Foreman's
+  commands), or drove the board, is stopped once until Claude says why: «checks edited: <why>».
+- **Earlier acceptances** are marked `legacy` on the update; anything accepted around the check shows in the brief.
 
 ## Foreman vs. the alternatives
 
@@ -328,6 +359,9 @@ In Windows PowerShell 5.1 the quotes inside a JSON argument get stripped: put th
 | `lessons.record_paths` | `[]` | regexes of your own files whose edit also counts as a lesson record at the Stop gate (e.g. your rule book) |
 | `lessons.record_hint` | `""` | where a lesson is written in this project (e.g. "a row in docs/rules/<area>.md"); the lesson note and the Stop gate then point there instead of `rule add` |
 | `lessons.confirm_days` | `60` | an active rule unconfirmed for longer is listed in the brief (`0` = never) |
+| `board` | `{"port": 8765, "poll_s": 3, "registries": []}` | the board's port, its refresh period, external registries (kind `cli`: `cmd`, `statuses`, `write_status`, `priorities`, `states`, `tags_from_status`) |
+| `lessons.edit_gate` / `lessons.guard_paths` | `"on"` / `[]` | the edit gate; regexes of your own files it guards too |
+| `accept_days` | `14` | how old the owner's words may be for an acceptance |
 | `lessons.memory_dir` | `"auto"` | Claude Code's memory folder (read-only); `auto` finds `~/.claude/projects/<project>/memory` |
 
 ## Uninstall

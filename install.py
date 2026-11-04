@@ -230,6 +230,7 @@ def install(proj, lang, yes_all, modules=None):
     cfg['modules'] = {'promises': True, 'lessons': True, 'board': False, **(cfg.get('modules') or {})}
     if modules is not None:
         cfg['modules'] = {m: m in modules for m in ('promises', 'lessons', 'board')}
+    cfg['board'] = {'port': 8765, 'poll_s': 3, 'token_file': '', 'registries': [], **(cfg.get('board') or {})}
     cfg['budget'] = {'prompt_chars': 1200, 'session_chars': 2000, 'recall_hits': 3, 'recall_chars': 700, 'hot_rows': 5, **(cfg.get('budget') or {})}
     cfg['lessons'] = {'stop_gate': 'correction', 'extra_correction_cues': [], 'extra_teaching_cues': [], 'rules_extra': [],
                       'record_paths': [], 'record_hint': '', 'confirm_days': 60, 'memory_dir': 'auto', 'index_skills': True, **(cfg.get('lessons') or {})}
@@ -237,6 +238,11 @@ def install(proj, lang, yes_all, modules=None):
     for n in ('promises.jsonl', 'inbox.jsonl', 'rules.jsonl', 'eval.jsonl', 'events.jsonl', 'owner.jsonl'):
         io.open(os.path.join(fdir, n), 'a', encoding='utf-8').close()
     mark_legacy(fdir)
+    if cfg['modules'].get('board'):                       # (a double-click opens the board: a console window is the owner's terminal)
+        io.open(os.path.join(fdir, 'board.bat'), 'w', encoding='utf-8', newline='\r\n').write(
+            f'@echo off\r\nchcp 65001 >nul\r\ncd /d "%~dp0.."\r\n"{sys.executable}" "%~dp0foreman.py" board\r\npause\r\n')
+        io.open(os.path.join(fdir, 'board.sh'), 'w', encoding='utf-8', newline='\n').write(
+            f'#!/bin/sh\ncd "$(dirname "$0")/.." && exec "{sys.executable}" .foreman/foreman.py board\n')
     if not os.path.exists(os.path.join(fdir, 'ledger.md')):
         io.open(os.path.join(fdir, 'ledger.md'), 'w', encoding='utf-8').write('# Ledger — kept | revised | dropped -> what -> evidence\n\n')
     if cfg['modules'].get('promises'):                     # (lessons only: the promise-side agents and skill are not ours to write)

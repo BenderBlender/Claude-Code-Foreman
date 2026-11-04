@@ -146,7 +146,7 @@ const T = {
         confirm_red: 'У {id} есть красные пробы. Всё равно принять? Пункт будет краснеть в «Что сломано».',
         confirm_drop: 'Снять {id}? Он уйдёт в «Снято» (не удаляется, можно вернуть).', accepted_by: 'принято',
         legacy: 'принято до 2.1', void: 'приёмка снята', state: { done: 'готово', partly: 'частично', not: 'нет', unchecked: 'неизвестно', 'no-probes': 'без проб' },
-        inbox_reg: 'входящие', empty: 'пусто' },
+        inbox_reg: 'входящие', empty: 'пусто', prio: { high: 'высокий', normal: 'обычный', later: 'потом' } },
   en: { title: 'Foreman · board', all: 'All', search: 'search: id, words', recheck: 'Check now', updated: 'updated',
         ctrl_ok: 'control ok', ctrl_bad: 'CONTROL BROKEN', lost: 'Lost the connection to Foreman — the board is not updating. Server stopped?',
         needs: 'Waiting for you', broken: 'What is broken', more: 'more', less: 'collapse', retry: 'Retry', close: 'Close',
@@ -160,7 +160,7 @@ const T = {
         confirm_red: '{id} has red probes. Accept anyway? It will stay red in «What is broken».',
         confirm_drop: 'Drop {id}? It goes to «Dropped» (never deleted, can come back).', accepted_by: 'accepted',
         legacy: 'accepted before 2.1', void: 'acceptance void', state: { done: 'done', partly: 'partly', not: 'not', unchecked: 'unknown', 'no-probes': 'no probes' },
-        inbox_reg: 'inbox', empty: 'empty' }
+        inbox_reg: 'inbox', empty: 'empty', prio: {} }
 };
 const LANG = document.documentElement.lang === 'en' ? 'en' : 'ru';
 const t = T[LANG];
@@ -210,7 +210,7 @@ function cardHtml(c) {
   const meta = [probes, c.comments && c.comments.length ? `${t.comments} ${c.comments.length}` : '', c.days != null ? `${c.days} ${t.days}` : '',
                 c.council ? `${t.council} ${esc(c.council)}` : '', ...(c.tags || []).map((x) => `<span class="tag">${esc(x)}</span>`)].filter(Boolean).join('');
   return `<div class="top"><span class="reg">${esc(regLabel(c.reg))}</span><span class="pid">${esc(c.id)}</span>` +
-    (c.priority ? `<span class="prio ${prioClass(c)}">${esc(c.priority)}</span>` : '') + `</div>` +
+    (c.priority ? `<span class="prio ${prioClass(c)}">${esc(t.prio[c.priority] || c.priority)}</span>` : '') + `</div>` +
     `<div class="title">${esc(c.title)}</div><div class="meta">${meta}</div>` +
     (c.col === 'waiting' && (c.waits || c.next) ? `<div class="waits">${t.waits}: ${esc(c.waits || c.next)}</div>` : '');
 }
@@ -400,7 +400,7 @@ async function renderPanel(fetchIt) {
   const comments = (c.comments || []).map((x) => `<li><span class="dim">${esc((x.ts || '').replace('T', ' '))} · ${esc(x.by)}</span><br>${esc(x.text)}</li>`).join('');
   const hist = (c.history || []).map((e) => `<li><span class="dim">${esc((e.ts || '').replace('T', ' '))} · ${esc(e.by || '')}</span> ${esc(e.kind)}` +
     `${e.from ? ' ' + esc(e.from) : ''}${e.to ? ' → ' + esc(e.to) : ''}${e.text ? ' «' + esc(e.text) + '»' : ''}</li>`).join('');
-  const prio = reg.priorities.length ? `<select id="p-prio">${reg.priorities.map((x) => `<option${x === c.priority ? ' selected' : ''}>${esc(x)}</option>`).join('')}</select>` : esc(c.priority);
+  const prio = reg.priorities.length ? `<select id="p-prio">${reg.priorities.map((x) => `<option value="${esc(x)}"${x === c.priority ? ' selected' : ''}>${esc(t.prio[x] || x)}</option>`).join('')}</select>` : esc(c.priority);
   $('p-body').innerHTML =
     `<div><b>${t.status}:</b> ${esc(c.status)} · <b>${t.priority}:</b> ${prio} · <span class="chk-${esc(c.check)}">${esc(t.state[c.check] || c.check)}</span></div>` +
     (acc ? `<div class="dim">${esc(acc)}</div>` : '') + (c.accept_void ? `<div class="bad">${t.void}: ${esc(c.accept_void)}</div>` : '') +

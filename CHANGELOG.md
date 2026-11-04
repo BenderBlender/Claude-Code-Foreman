@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.1 — 2026-11-04 · The board and who checks the checker
+
+- **The board** (`foreman.py board`, `board.py` + `board.html`, standard library, offline): every item on one page; drag between
+  columns = status, order in a column = priority (`rank`, followed by the brief); «Waiting for you» and «What is broken» strips; an
+  item panel with the quote, probes, comments, history; accept = the owner's word. Several registries on one board through the «cli»
+  adapter; each written through its own command. A start key printed only to the owner's terminal, 127.0.0.1, Host / Origin checks,
+  CSP; 409 on a conflict with Claude's write, 503 while the lock is held. The owner's moves reach the next prompt hook (≤ 300 chars).
+- **«Accepted» only with the owner's words** (`--quote`, checked verbatim against `.foreman/owner.jsonl`); an acceptance is void once
+  the quote / probes / rubric change; earlier acceptances marked `legacy`; acceptances without the record listed in the brief.
+- **The edit gate** at Stop: direct edits of Foreman's own files / the hook settings / guarded paths, a forced edit, the kit installer
+  or the board's API in a turn → one block until «правка проверок: <why>».
+- **«Unknown»** with a reason for a probe that could not run; a real «no» outranks it; new probe `fresh:<result>:<glob>`.
+- **Rules age honestly**: `confirmed` date, `rule confirm`, `rule replace --by` (kept, not recalled), a stale list in the brief;
+  lessons may be deferred with a reason («отложено: …»).
+- **TaskCompleted** hook: a task of Claude Code's own list that names `P-…` stays open while the item has red probes.
+- An «unknown» guard changes nothing; markers are read from the Stop input's `last_assistant_message` too.
+- Tests: council 28, lessons 45, v21 46, board 26.
+- Design and plan review: Fable 5.1.
+
 ## 2.0 — 2026-11-04 · Lessons (уроки)
 
 Foreman now keeps a second registry beside your promises: **how** you want things done. A correction or a teaching becomes a rule

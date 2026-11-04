@@ -99,7 +99,7 @@ T = {
            'cmp_best': 'Больше всего зелёных проб: {labels}', 'cmp_ctrl': 'контроль СЛОМАН — этой проверке не верить',
            'no_root': 'нет такой папки:',
            'cmp_none': 'Ни один кандидат не прошёл ни одной пробы.',
-           'ev_comment': 'комментарий «{t}»', 'ev_priority': 'приоритет {t}', 'ev_accept': 'принято', 'ev_triage': '→ завести пункт',
+           'board_kit': 'Прораб', 'ev_comment': 'комментарий «{t}»', 'ev_priority': 'приоритет {t}', 'ev_accept': 'принято', 'ev_triage': '→ завести пункт',
            'ev_skip': 'не задача', 'ev_rank': 'порядок в колонках изменён — учесть при выборе следующего', 'ev_more': 'и ещё {n}',
            'blocked': 'ждёт {ids}', 'events': 'ПРОРАБ·доска (владелец): {list}', 'commented': 'комментарий записан: {id}',
            'lessons_line': 'Уроки: правил {n} · ждут вашего «да» {p} · горячих {h} · стражей красных {g}',
@@ -143,7 +143,7 @@ T = {
            'cmp_best': 'Most green probes: {labels}', 'cmp_ctrl': 'control BROKEN — do not trust this check',
            'no_root': 'no such folder:',
            'cmp_none': 'No candidate passes any probe.',
-           'ev_comment': 'comment «{t}»', 'ev_priority': 'priority {t}', 'ev_accept': 'accepted', 'ev_triage': '→ file an item',
+           'board_kit': 'Foreman', 'ev_comment': 'comment «{t}»', 'ev_priority': 'priority {t}', 'ev_accept': 'accepted', 'ev_triage': '→ file an item',
            'ev_skip': 'not a task', 'ev_rank': 'column order changed — use it to pick the next', 'ev_more': 'and {n} more',
            'blocked': 'waits for {ids}', 'events': 'FOREMAN·board (owner): {list}', 'commented': 'comment saved: {id}',
            'lessons_line': 'Lessons: {n} rules · waiting for your «yes» {p} · hot {h} · red guards {g}',
@@ -669,7 +669,7 @@ def owner_says(ids, quote):
 
 
 def hook_task(inp):
-    """TaskCompleted (Claude Code's own task list — the CLI; the desktop app's list does not fire it): a task that names P-… closes
+    """TaskCompleted (Claude Code's own task list, wherever Claude uses its task tools): a task that names P-… closes
     only when that item has no red probe; exit 2 + the reason on stderr keeps it open (Claude Code hooks docs, checked 04.11)"""
     if not CFG['modules'].get('promises'):
         return 0
