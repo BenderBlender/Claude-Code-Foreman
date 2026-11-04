@@ -24,7 +24,7 @@ that is found again before the next action, and the turn cannot end until the le
   `--lang` keeps the project's language, the installer backs up every file it replaces.
 - **Council fixes** (1.1 reviewed): candidate paths independent of the working folder, `get:` and absolute probes marked «not
   comparable», frozen fields guarded, `round` validated and stopped, a non-git fallback, a blind judge.
-- Tests: `tests/test_council.py` (28 checks), `tests/test_lessons.py` (38 checks).
+- Tests: `tests/test_council.py` (28 checks), `tests/test_lessons.py` (44 checks).
 
 ## 1.1 — 2026-11-03 · Council (консилиум)
 
