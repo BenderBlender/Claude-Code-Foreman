@@ -198,31 +198,38 @@ def tokens(text):
 
 
 def lexicon():
-    """{concept: [stemmed phrases]} — RU<->EN words of one idea; a query word pulls its partners in at weight 0.55"""
+    """→ ({concept: [stemmed phrases]}, {law: {concept: weight}}) — RU<->EN words of one idea (a query word pulls its partners in at
+    weight 0.55) and, optionally, the concepts that point at a law of a rule book (`"triggers"`, as in Harness²)"""
     try:
-        raw = json.load(io.open(LEXICON, encoding='utf-8')).get('concepts', {})
+        raw = json.load(io.open(LEXICON, encoding='utf-8'))
     except (OSError, ValueError):
         raw = {}
-    return {cid: [' '.join(tokens(p)) for p in group if tokens(p)] for cid, group in raw.items()}
+    concepts = {cid: [' '.join(tokens(p)) for p in group if tokens(p)] for cid, group in (raw.get('concepts') or {}).items()}
+    return concepts, raw.get('triggers') or {}
 
 
-def expand(q_tokens, query_text, concepts):
+def concepts_in(query_text, concepts):
     low = ' '.join(tokens(query_text))
+    return {cid for cid, group in concepts.items()
+            if any((p in low) if ' ' in p else re.search(r'(^| )' + re.escape(p) + r'( |$)', low) for p in group)}
+
+
+def expand(q_tokens, found, concepts):
     weights = {t: 1.0 for t in q_tokens}
-    for cid, group in concepts.items():
-        if any((p in low) if ' ' in p else re.search(r'(^| )' + re.escape(p) + r'( |$)', low) for p in group):
-            for p in group:
-                for t in p.split():
-                    weights.setdefault(t, 0.55)
+    for cid in found:
+        for p in concepts[cid]:
+            for t in p.split():
+                weights.setdefault(t, 0.55)
     return weights
 
 
 # ---------------------------------------------------------------- the sources (all read-only except rules.jsonl)
 class Block:
-    __slots__ = ('kind', 'src', 'ref', 'text', 'tf', 'length', 'trigger', 'label')
+    __slots__ = ('kind', 'src', 'ref', 'text', 'tf', 'length', 'trigger', 'label', 'tags', 'law')
 
-    def __init__(self, kind, src, ref, text, trigger_text, label):
+    def __init__(self, kind, src, ref, text, trigger_text, label, tags=(), law=''):
         self.kind, self.src, self.ref, self.text, self.label = kind, src, ref, text, label
+        self.tags, self.law = list(tags), law          # (a rule book's row tagged [P2·P1] / a law section «### P2 · …»)
         self.tf = Counter(tokens(text))
         self.length = sum(self.tf.values())
         self.trigger = Counter(tokens(trigger_text))
@@ -264,15 +271,18 @@ def extra_blocks():
             for i, line in enumerate(text.splitlines(), 1):
                 if line.startswith('| ') and not re.match(r'^\|[\s\-|:]+\|?$', line) and line.count(' | ') >= 2:
                     cells = [c.strip() for c in line.strip().strip('|').split(' | ')]
+                    tags = re.findall(r'P\d+', re.match(r'^(\[[^\]]*\])?', cells[0]).group(0) or '')
                     when = re.sub(r'^\[[^\]]*\]\s*', '', cells[0])
                     if when.lower() in ('when', 'когда', 'что', 'кто', 'вопрос'):
                         continue
                     keys = cells[-1] if cells[-1].lower().startswith(('keys', 'ключи')) or len(cells) >= 4 else ''
-                    out.append(Block('rule', f, f'{rel}:{i}', line, f'{when} {keys}', f'{rel}:{i} {when[:110]}'))
+                    out.append(Block('rule', f, f'{rel}:{i}', line, f'{when} {keys}', f'{rel}:{i} {when[:110]}', tags))
             for m in re.finditer(r'^###\s+(.+?)$(.*?)(?=^#{2,3}\s|\Z)', text, re.M | re.S):
                 head, body = m.group(1), m.group(2)
                 trig = head + ' ' + ' '.join(re.findall(r'\*\*(?:Test|Keys)[^*]*\*\*:?\s*(.*)', body))
-                out.append(Block('rule', f, f'{rel}#{head[:30]}', head + ' ' + body[:3000], trig, f'{rel} — {head[:110]}'))
+                law = re.match(r'(P\d+)\b', head)
+                out.append(Block('rule', f, f'{rel}#{head[:30]}', head + ' ' + body[:3000], trig, f'{rel} — {head[:110]}',
+                                 law=law.group(1) if law else ''))
     return out
 
 
@@ -312,7 +322,10 @@ def search(query, blocks=None, top=8):
     q = tokens(query)
     if not q or not blocks:
         return []
-    terms = expand(q, query, lexicon())
+    concepts, triggers = lexicon()
+    found = concepts_in(query, concepts)
+    terms = expand(q, found, concepts)
+    top_laws = laws(blocks, q, found, triggers)
     n = len(blocks)
     df, tdf = Counter(), Counter()
     for b in blocks:
@@ -336,9 +349,40 @@ def search(query, blocks=None, top=8):
             continue
         own = len({t for t in q if b.tf.get(t) or b.trigger.get(t)})
         s *= 1.15 if b.kind == 'rule' else 0.9 if b.kind == 'ledger' else 1.0
+        if top_laws:                                  # (the family of the law the situation falls under — Harness²: +0.45 / +0.25)
+            s *= 1.0 + (0.45 if b.tags and b.tags[0] == top_laws[0] else 0.25 if set(b.tags) & set(top_laws) else 0.0)
         out.append({'score': s, 'block': b, 'own': own, 'trig': trig_hit})
     out.sort(key=lambda h: -h['score'])
     return out[:top] if top else out
+
+
+def laws(blocks, q, found, triggers):
+    """a rule book with LAWS («### P1 · …» sections, rows tagged [P1]): which law does the situation fall under? BM25 of the query
+    against each law's document (its section + the When cells of its rows ×2) + the lexicon's action triggers → up to 2 laws
+    scoring ≥ half the best. Nothing when the rule book has no laws (a stranger's project)."""
+    docs = {}
+    for b in blocks:
+        if b.law:
+            docs.setdefault(b.law, Counter()).update(b.tf)
+    if not docs:
+        return []
+    for b in blocks:
+        for t in b.tags:
+            if t in docs:
+                docs[t].update({k: 2 * v for k, v in b.trigger.items()})
+    n, df = len(docs), Counter()
+    for d in docs.values():
+        df.update(d.keys())
+    avg = sum(sum(d.values()) for d in docs.values()) / n
+    scores = {}
+    for law, d in docs.items():
+        dl = sum(d.values())
+        sc = sum(math.log(1 + (n - df[t] + 0.5) / (df[t] + 0.5)) * d[t] * 2.2 / (d[t] + 1.2 * (0.25 + 0.75 * dl / avg))
+                 for t in set(q) if t in d)
+        sc += 3.0 * sum(w for c, w in (triggers.get(law) or {}).items() if c in found)
+        scores[law] = sc
+    best = max(scores.values())
+    return [k for k, v in sorted(scores.items(), key=lambda kv: -kv[1]) if best > 0 and v >= 0.5 * best][:2]
 
 
 def gate(hits, n_query):
