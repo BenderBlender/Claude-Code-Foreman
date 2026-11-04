@@ -71,6 +71,11 @@ T = {
            'stale': 'В работе без движения > {d} дн.', 'orphans': 'Сироты (файл, на который никто не ссылается)',
            'inbox': 'Входящие просьбы НЕ разобраны: {n} — {list} → foreman.py add {{…}} + take I-… --as P-…, или skip I-… --why «…»',
            'ctrl_ok': 'Контроль: ок (подставные пробы провалились)', 'ctrl_bad': 'Контроль СЛОМАН — подставная проба прошла, пробам не верить',
+           'quote_need': 'Принять можно только словами владельца: --quote "<его слова дословно>".',
+           'quote_bad': 'Таких слов владельца нет в журнале (.foreman/owner.jsonl, 14 дней). Повторите его слова дословно — или спросите его ещё раз, назвав номер.',
+           'accept_mixed': 'Принять и одновременно поменять пробы / цитату / критерии нельзя — сначала правка, потом приёмка словом владельца.',
+           'accept_lock': 'Реестр занят другим процессом — приёмка без замка не пишется; повторите.',
+           'unsigned': 'Принято без слова владельца (нет записи accepted)',
            'accept_void': 'ПРОРАБ: приёмка {id} снята — после неё изменено: {what}. Пункт снова «в работе»; принять заново может только владелец.',
            'task_red': 'ПРОРАБ: задача называет {id}, но у пункта красные пробы: {probes}. Доделай — или скажи владельцу, почему закрываешь.', 'why': {'down': 'не отвечает', 'cmd-off': 'cmd: выключен (config allow_cmd)', 'no-files': 'шаблон не нашёл ни одного файла', 'bad-regex': 'сломанная регулярка', 'timeout': 'таймаут', 'no-access': 'нет доступа', 'unknown-kind': 'неизвестный вид пробы'},
            'park': 'Парковка: новая просьба посреди работы → текущему пункту set P-… status=parked next="…", потом новое.',
@@ -108,6 +113,11 @@ T = {
            'stale': 'In progress with no move > {d} days', 'orphans': 'Orphans (a file nothing references)',
            'inbox': 'Unprocessed asks in the inbox: {n} — {list} → foreman.py add {{…}} + take I-… --as P-…, or skip I-… --why "…"',
            'ctrl_ok': 'Control: ok (the fake probes failed)', 'ctrl_bad': 'Control BROKEN — a fake probe passed, do not trust the probes',
+           'quote_need': 'Only the owner\'s words accept: --quote "<his words verbatim>".',
+           'quote_bad': 'No such words of the owner in the log (.foreman/owner.jsonl, 14 days). Repeat his words verbatim — or ask him again, naming the id.',
+           'accept_mixed': 'Accepting while changing the probes / quote / rubric is refused — edit first, then the owner accepts.',
+           'accept_lock': 'The registry is busy — an acceptance is never written without the lock; try again.',
+           'unsigned': 'Accepted without the owner\'s word (no accepted record)',
            'accept_void': 'FOREMAN: the acceptance of {id} is void — changed after it: {what}. The item is back in work; only the owner can accept it again.',
            'task_red': 'FOREMAN: the task names {id}, but the item has red probes: {probes}. Finish it — or tell the owner why you close it.', 'why': {'down': 'does not answer', 'cmd-off': 'cmd: is off (config allow_cmd)', 'no-files': 'the pattern found no file', 'bad-regex': 'a broken regex', 'timeout': 'timeout', 'no-access': 'no access', 'unknown-kind': 'an unknown probe kind'},
            'park': 'Parking: a new ask mid-work → set P-… status=parked next="…" on the current item first, then the new one.',
@@ -207,9 +217,12 @@ def locked(wait=2.0):
             time.sleep(0.05)
         except OSError:
             break
+    global LOCK_HELD
+    LOCK_HELD = held
     try:
         yield held
     finally:
+        LOCK_HELD = False
         if held:
             try:
                 os.remove(p)
@@ -218,6 +231,7 @@ def locked(wait=2.0):
 
 
 _lessons = None
+LOCK_HELD = False
 
 
 def lessons():
@@ -425,6 +439,7 @@ def summary(r):
                 waiting=sorted([i for i in live if i.get('status') == 'waiting'], key=key),
                 nxt=sorted([i for i in live if i.get('status') in ('todo', 'parked') and i['_check'] != 'done' and not blockers(i, live)], key=key),
                 red=[i for i in live if i.get('status') == 'accepted' and i['_check'] in ('not', 'partly')],
+                unsigned=[i for i in live if i.get('status') == 'accepted' and not i.get('accepted')],
                 built=[i for i in live if i.get('status') in ('todo', 'doing') and i['_check'] == 'done'],
                 stale=[i for i in live if i.get('status') == 'doing' and (age(i) or 0) > CFG.get('stale_days', 3)],
                 council=[i for i in live if rounds_of(i) and i.get('status') in OPEN and i.get('council') != 'stopped'])
@@ -450,6 +465,8 @@ def brief(r):
         out.append(L['built'] + ': ' + ', '.join(i['id'] for i in s['built'][:8]))
     if s['red']:
         out.append(L['red'] + ': ' + ', '.join(short(i, 30) for i in s['red'][:5]))
+    if s['unsigned']:
+        out.append(L['unsigned'] + ': ' + ', '.join(i['id'] for i in s['unsigned'][:8]))
     if s['stale']:
         out.append(L['stale'].format(d=CFG.get('stale_days', 3)) + ': ' + ', '.join(i['id'] for i in s['stale']))
     if r['orphans']:
@@ -536,7 +553,7 @@ def hook_prompt(inp):
     prompt = re.sub(r'<system-reminder[^>]*>[\s\S]*?</system-reminder[^>]*>', '', str(inp.get('prompt') or '')).strip()
     if not prompt or AGENT_NOTE.match(prompt) or '[Subagent hand-back]' in prompt[:400]:
         return
-    owner_log(prompt)                                       # (a short «да» counts here: it may be the yes to an «accept?»)
+    owner_log(prompt, inp)                                  # (a short «да» counts here: it may be the yes to an «accept?»)
     if SHORT.match(prompt) or len(prompt) < 12:
         return
     events = owner_events() if CFG['modules'].get('board') else ''
@@ -567,10 +584,60 @@ def hook_prompt(inp):
 hook_inbox = hook_prompt                                    # (1.1 settings call «hook inbox» — still works)
 
 
-def owner_log(text):
-    rows = jsonl(OWNER)[-49:]
-    rows.append({'ts': dt.datetime.now().isoformat(timespec='seconds'), 'text': text[:4000]})
+def owner_log(text, inp=None):
+    """the owner's message verbatim + `prev`, the start of the assistant reply it answers (a «да» to «принять R-003?» binds to R-003);
+    the last 500 messages (Fable's review 04.11, 1.1 / 1.8)"""
+    inp = inp or {}
+    rows = jsonl(OWNER)[-499:]
+    rows.append({'ts': dt.datetime.now().isoformat(timespec='seconds'), 'session_id': str(inp.get('session_id') or ''),
+                 'text': text[:20000], 'prev': _prev_reply(inp.get('transcript_path'))[:300], 'via': 'hook'})
     write_jsonl(OWNER, rows)
+
+
+def _prev_reply(path, tail=1024 * 1024):
+    """the text of the last assistant message in the transcript's tail ('' when there is none)"""
+    try:
+        size = os.path.getsize(path)
+        with open(path, 'rb') as f:
+            f.seek(max(0, size - tail))
+            lines = f.read().decode('utf-8', 'replace').splitlines()
+    except (OSError, TypeError):
+        return ''
+    for line in reversed(lines):
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if e.get('type') == 'assistant':
+            c = (e.get('message') or {}).get('content')
+            text = c if isinstance(c, str) else ' '.join(b.get('text') or '' for b in c or [] if isinstance(b, dict) and b.get('type') == 'text')
+            if text.strip():
+                return text.strip()
+    return ''
+
+
+def _norm(s):
+    return re.sub(r'\s+', ' ', re.sub('[«»"\'“”„]', '', str(s).lower().replace('ё', 'е'))).strip()
+
+
+def owner_says(ids, quote):
+    """→ (True, the message's ts) when the owner said it: the quote (≥ 12 chars, normalised) is a verbatim part of one of his
+    messages of the last `accept_days` days, or a short answer («да», «принимаю») to a reply that named every id; several ids at once
+    must each be named (in that reply or in his message). A paraphrase is refused — that is the point (Fable's review 1.2)"""
+    q = _norm(quote)
+    if not q:
+        return False, L['quote_need']
+    since = (dt.datetime.now() - dt.timedelta(days=int(CFG.get('accept_days', 14)))).isoformat(timespec='seconds')
+    named = lambda row: all(re.search(r'\b' + re.escape(i) + r'\b', f"{row.get('prev', '')} {row.get('text', '')}") for i in ids)
+    for row in reversed(jsonl(OWNER)):
+        if str(row.get('ts', '')) < since:
+            break
+        t = _norm(row.get('text', ''))
+        if len(q) >= 12 and q in t and (len(ids) == 1 or named(row)):
+            return True, row.get('ts')
+        if len(q) < 12 and q == t and named(row):           # (a short «да» only as the answer to a reply that named the id)
+            return True, row.get('ts')
+    return False, L['quote_bad']
 
 
 def hook_task(inp):
@@ -607,7 +674,9 @@ def hook_stop(inp):
             reasons.append(L['hook_stop'].format(list='; '.join(f"{r.get('id', '?')}: «{str(r.get('text', ''))[:120]}»" for r in fresh)))
     R = lessons()
     if R:
-        reasons.append(R.lesson_gate(inp.get('transcript_path')))
+        last = str(inp.get('last_assistant_message') or '')
+        reasons.append(R.lesson_gate(inp.get('transcript_path'), last))
+        reasons.append(R.edit_gate(inp.get('transcript_path'), last))
         newly, _ = R.guards(probe)
         reasons.append(R.guard_reason(newly))
     text = fit(reasons, 1200)
@@ -619,7 +688,7 @@ def lessons_lines():
     R = lessons()
     if not R:
         return []
-    rules = [r for r in R.jsonl(R.RULES) if r.get('status') != 'dropped']
+    rules = [r for r in R.jsonl(R.RULES) if r.get('status') not in ('dropped', 'replaced')]
     if not rules:
         return []
     _, red = R.guards(probe, log=False)
@@ -634,7 +703,11 @@ def lessons_lines():
         out.append(R.LX['stale'].format(days=R.CFG['lessons'].get('confirm_days', 60)) + ': ' + ', '.join(r['id'] for r in old[:8]))
     dfr = R.deferred()
     if dfr:
-        out.append(R.LX['deferred_line'].format(n=len(dfr)))
+        week = (dt.datetime.now() - dt.timedelta(days=7)).isoformat(timespec='seconds')
+        out.append(R.LX['deferred_line'].format(n=len(dfr), old=sum(str(e.get('ts', '')) < week for e in dfr)))
+    uns = R.unsigned_rules()
+    if uns:
+        out.append(L['unsigned'] + ': ' + ', '.join(r['id'] for r in uns[:8]))
     return out
 
 
@@ -746,7 +819,7 @@ def main(a):
         with locked():
             if a[0] == 'ledger':
                 R.ledger_add(' '.join(a[1:])); print(R.LX['ledger_ok'].format(line=' '.join(a[1:]))); return 0
-            return R.rule_cmd(a[1:])
+            return R.rule_cmd(a[1:], quote_check=owner_says if LOCK_HELD else None)
     if a[:1] == ['comment'] and len(a) > 2:
         with locked():
             reg = jsonl(REG)
@@ -781,26 +854,39 @@ def commands(a):
         it = next((i for i in reg if i.get('id') == a[1]), None)
         if not it:
             print('no item', a[1]); return 1
-        pairs = [kv.partition('=') for kv in a[2:] if kv != '--force']
+        quote = a[a.index('--quote') + 1] if '--quote' in a and a.index('--quote') + 1 < len(a) else None
+        rest = [x for i, x in enumerate(a[2:], 2) if x not in ('--force', '--quote') and not (i > 2 and a[i - 1] == '--quote')]
+        pairs = [kv.partition('=') for kv in rest]
         force = '--force' in a
+        wants = dict((k, v) for k, _, v in pairs)
+        if wants.get('status') == 'accepted' and it.get('status') != 'accepted':
+            if any(k in wants for k in ('probes', 'quote', 'rubric')):
+                print(L['accept_mixed']); return 1             # (one command must not swap the probes and accept them)
+            if not LOCK_HELD:
+                print(L['accept_lock']); return 1
+            ok, ts = owner_says([it['id']], quote or '')
+            if not ok:
+                print(ts); return 1
+            it['accepted'] = {'ts': dt.datetime.now().isoformat(timespec='seconds'), 'by': 'owner-quote', 'quote': quote, 'msg_ts': ts}
         if rounds_of(it) and not force and any(k in ('probes', 'rubric') for k, _, _ in pairs):
             print(L['frozen'].format(id=it['id'], n=len(rounds_of(it)))); return 1
         for k, _, _ in pairs:
             if k in ('id', 'rounds', 'council') and not force:      # (review 04.11: «set rounds=…» unfroze and broke the brief)
                 print(L['guarded'].format(k=k)); return 1
-        was = {k: it.get(k) for k in ('status', 'quote', 'probes')}
+        was = {k: it.get(k) for k in ('status', 'quote', 'probes', 'rubric')}
         try:
             for k, _, v in pairs:
                 if k:
                     it[k] = arg_json(v) if k in ('probes', 'rubric', 'rounds', 'rank', 'comments', 'blocked_by', 'tags') else v
         except ValueError as e:
             print(L['bad_json'].format(err=e)); return 1
-        changed = [k for k in ('quote', 'probes') if it.get(k) != was[k]]
+        changed = [k for k in ('quote', 'probes', 'rubric') if it.get(k) != was[k]]
         if was['status'] == 'accepted' and changed and it.get('status') == 'accepted':
             # (an acceptance covers THAT quote with THOSE probes — VisionForge: edited after it, the item is back in work, 2.1)
             it['status'] = 'doing'
+            it.pop('accepted', None)
             it['accept_void'] = f"{today()}: {', '.join(changed)}"
-            append_event({'kind': 'accept_void', 'id': it['id'], 'changed': changed})
+            append_event({'kind': 'unaccept', 'id': it['id'], 'changed': changed})
             print(L['accept_void'].format(id=it['id'], what=', '.join(changed)))
         if 'rounds' in it and not isinstance(it['rounds'], list):
             print(L['guarded'].format(k='rounds')); return 1

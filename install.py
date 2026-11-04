@@ -182,6 +182,27 @@ def claude_section(proj, lang, remove=False, promises=True, hint=''):
         io.open(p, 'w', encoding='utf-8', newline='\n').write(s)
 
 
+def mark_legacy(fdir):
+    """2.1 accepts only with the owner's logged words; what was accepted BEFORE is marked {"legacy": true} once, so the brief tells it
+    apart from an acceptance that went around the check (Fable's review 1.3)"""
+    for n, done in (('promises.jsonl', 'accepted'), ('rules.jsonl', 'active')):
+        p = os.path.join(fdir, n)
+        rows = []
+        for line in io.open(p, encoding='utf-8'):
+            try:
+                rows.append(json.loads(line))
+            except ValueError:
+                rows.append(line.rstrip('\n'))           # (an unreadable line is kept as it is)
+        hit = 0
+        for r in rows:
+            if isinstance(r, dict) and r.get('status') == done and not r.get('accepted'):
+                r['accepted'] = {'legacy': True}
+                hit += 1
+        if hit:
+            io.open(p, 'w', encoding='utf-8', newline='\n').write(''.join((json.dumps(r, ensure_ascii=False) if isinstance(r, dict) else r)
+                                                                         + '\n' for r in rows))
+
+
 KIT_FILES = [('agent_foreman.md', 'agents/foreman.md'), ('agent_judge.md', 'agents/foreman-judge.md'),
              ('skill_council.md', 'skills/foreman-council/SKILL.md')]       # (kit file → its place under .claude/)
 
@@ -213,8 +234,9 @@ def install(proj, lang, yes_all, modules=None):
     cfg['lessons'] = {'stop_gate': 'correction', 'extra_correction_cues': [], 'extra_teaching_cues': [], 'rules_extra': [],
                       'record_paths': [], 'record_hint': '', 'confirm_days': 60, 'memory_dir': 'auto', 'index_skills': True, **(cfg.get('lessons') or {})}
     write_json(os.path.join(fdir, 'config.json'), cfg)
-    for n in ('promises.jsonl', 'inbox.jsonl', 'rules.jsonl', 'eval.jsonl', 'events.jsonl'):
+    for n in ('promises.jsonl', 'inbox.jsonl', 'rules.jsonl', 'eval.jsonl', 'events.jsonl', 'owner.jsonl'):
         io.open(os.path.join(fdir, n), 'a', encoding='utf-8').close()
+    mark_legacy(fdir)
     if not os.path.exists(os.path.join(fdir, 'ledger.md')):
         io.open(os.path.join(fdir, 'ledger.md'), 'w', encoding='utf-8').write('# Ledger — kept | revised | dropped -> what -> evidence\n\n')
     if cfg['modules'].get('promises'):                     # (lessons only: the promise-side agents and skill are not ours to write)

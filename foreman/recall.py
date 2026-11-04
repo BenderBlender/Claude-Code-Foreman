@@ -39,7 +39,8 @@ ROOT = os.path.abspath(os.path.join(HERE, os.pardir))
 RULES, LEDGER, EVAL, EVENTS, LEXICON, RULES_MD = (os.path.join(HERE, n) for n in
                                                   ('rules.jsonl', 'ledger.md', 'eval.jsonl', 'events.jsonl', 'lexicon.json', 'RULES.md'))
 DEFAULTS = {'stop_gate': 'correction', 'extra_correction_cues': [], 'extra_teaching_cues': [], 'rules_extra': [],
-            'record_paths': [], 'record_hint': '', 'confirm_days': 60, 'memory_dir': 'auto', 'index_skills': True}
+            'record_paths': [], 'record_hint': '', 'confirm_days': 60, 'edit_gate': 'on', 'guard_paths': [], 'memory_dir': 'auto',
+            'index_skills': True}
 BUDGET = {'prompt_chars': 1200, 'session_chars': 2000, 'recall_hits': 3, 'recall_chars': 700, 'hot_rows': 5}
 CFG, LANG, LX = {'lessons': dict(DEFAULTS), 'budget': dict(BUDGET)}, 'ru', {}
 
@@ -72,8 +73,12 @@ TXT = {
                     'протокол урока (правило уже есть? корень, где ещё, ОДНО правило rule add … --situation) и строка «записано: R-…» — '
                     'или «не поправка: <почему>», если это не урок.'),
            'kind_c': 'ПОПРАВКУ', 'kind_t': 'УЧЁБУ', 'bad_level': 'уровень — число 0…3',
+           'accept_lock': 'Правила заняты другим процессом — приёмка без замка не пишется; повторите.',
+           'edit_gate': ('ПРОРАБ·правка проверок (Stop): за этот ход правились файлы самого Прораба / настройки хуков / охраняемые пути '
+                         'или вызывалась доска: {what}. Если это по слову владельца или нужно для работы — скажи это строкой '
+                         '«правка проверок: <почему>»; если нет — верни как было.'),
            'stale': 'Правила давно не подтверждались (> {days} дн.; rule confirm / replace)',
-           'deferred_line': 'Отложенные уроки за 30 дней: {n} (python .foreman/foreman.py cues --deferred)',
+           'deferred_line': 'Отложенные уроки за 30 дней: {n}, из них старше недели (решите): {old} — python .foreman/foreman.py cues --deferred',
            'guard': 'ПРОРАБ·страж: правило {id} («{when}») нарушено: {probe} красная. Исправь или скажи владельцу.',
            'hot': 'Горячие правила', 'guards_red': 'Стражи красные', 'proposed': 'Правила ждут вашего «да» (rule accept)',
            'added': 'записано: {id} (статус «предложено» — станет «принято» словом владельца: rule accept {id})',
@@ -103,8 +108,12 @@ TXT = {
                     'stopping: the lesson protocol (already a rule? root cause, where else, ONE rule add … --situation) and the line '
                     '«recorded: R-…» — or «not a correction: <why>» if it is not a lesson.'),
            'kind_c': 'CORRECTION', 'kind_t': 'TEACHING', 'bad_level': 'the level is a number 0…3',
+           'accept_lock': 'The rules are busy — an acceptance is never written without the lock; try again.',
+           'edit_gate': ('FOREMAN·checks edited (Stop): this turn edited Foreman\'s own files / the hook settings / guarded paths or drove '
+                         'the board: {what}. If the owner asked for it or the work needs it, say so in a line «checks edited: <why>»; '
+                         'if not, undo it.'),
            'stale': 'Rules not confirmed for long (> {days} days; rule confirm / replace)',
-           'deferred_line': 'Deferred lessons in 30 days: {n} (python .foreman/foreman.py cues --deferred)',
+           'deferred_line': 'Deferred lessons in 30 days: {n}, older than a week (decide): {old} — python .foreman/foreman.py cues --deferred',
            'guard': 'FOREMAN·guard: rule {id} («{when}») is broken: {probe} is red. Fix it or tell the owner.',
            'hot': 'Hot rules', 'guards_red': 'Red guards', 'proposed': 'Rules waiting for your «yes» (rule accept)',
            'added': 'recorded: {id} (status «proposed» — the owner\'s word makes it «active»: rule accept {id})',
@@ -514,7 +523,7 @@ def log_cue(cls):
 KNOWLEDGE = re.compile(r'rules\.jsonl|ledger\.md|lexicon\.json|eval\.jsonl|foreman\.py[\'"]? (rule|ledger)|[\\/]memory[\\/][^\\/]+\.md|'
                        r'SKILL\.md|CLAUDE\.md', re.I)
 REFUSE = re.compile(r'не поправка:|не правка:|not a correction:', re.I)
-DEFER = re.compile(r'(?:отложено|deferred):\s*(.{0,200})', re.I)
+DEFER = re.compile(r'(?:отложено|deferred):\s*(.{10,200})', re.I)   # (a reason of ≥ 10 characters, or it is no deferral)
 # (a shell command counts only when it WRITES: the engine's rule / ledger commands, a redirect, a copy, an in-place edit — review 04.11)
 WRITE_CMD = re.compile(r'foreman\.py[\'"]?\s+(rule\s+(add|accept|set|drop)|ledger|lesson)|(?<![0-9&])>>?\s*[^\s&|>]|\btee\b|'
                        r'Set-Content|Add-Content|Out-File|\bsed\s+-i|\b(cp|mv|copy|move)\b|Copy-Item|Move-Item', re.I)
@@ -569,7 +578,7 @@ def _ts(s):
         return None
 
 
-def lesson_gate(transcript_path):
+def lesson_gate(transcript_path, last_msg=''):
     """→ a block reason, or ''. A correction (a teaching too with stop_gate «all») in the owner's last message must leave a REAL
     record since — a write to the rules / ledger / memory / a skill / CLAUDE.md (a tool call, or the file's time) — or the reply says
     «не поправка: …» / «уже записано: R-N» with an existing R-N. The words «записано: …» alone are not a record (council 04.11)."""
@@ -606,6 +615,7 @@ def lesson_gate(transcript_path):
                 last_text = b['text']
     if not recorded and ts:
         recorded = any(os.path.exists(f) and os.path.getmtime(f) > ts for f in (RULES, LEDGER))
+    last_text = f'{last_msg}\n{last_text}' if last_msg else last_text   # (the transcript may lack the last reply — Stop docs)
     if recorded or REFUSE.search(last_text):
         return ''
     d = DEFER.search(last_text)
@@ -614,6 +624,7 @@ def lesson_gate(transcript_path):
         if not any(e.get('kind') == 'lesson_deferred' and e.get('key') == key for e in jsonl(EVENTS)):
             append_jsonl(EVENTS, {'ts': dt.datetime.now().isoformat(timespec='seconds'), 'by': 'foreman', 'kind': 'lesson_deferred',
                                   'key': key, 'head': cls['text'][:120], 'why': d.group(1).strip()[:200]})
+            ledger_add(f"deferred -> «{cls['text'][:80]}» -> {d.group(1).strip()[:120]}")
         return ''
     m = ALREADY.search(last_text)
     if m and any(r.get('id') == m.group(1) for r in jsonl(RULES)):
@@ -638,7 +649,10 @@ def guards(probe, log=True):
             last[e.get('id')] = e.get('ok')
     newly, red = [], []
     for r in rules:
-        ok = probe(r['guard']) is True
+        v = probe(r['guard'])
+        if v is None:                                       # («unknown» is neither red nor a change — review 04.11, 2.2)
+            continue
+        ok = v is True
         if not ok:
             red.append(r)
             if last.get(r['id']) is True:
@@ -655,6 +669,64 @@ def guard_reason(newly):
 def hot_lines():
     rows = [r for r in jsonl(RULES) if r.get('status') == 'active' and int(r.get('level') or 0) >= 2]
     return [f"{r['id']} {r.get('when')} → {r.get('do')}"[:120] for r in rows[:CFG['budget']['hot_rows']]]
+
+
+# ---------------------------------------------------------------- the edit gate (2.1, Fable's review 1.5): who checks the checker
+EDIT_FILE = re.compile(r'(?:^|[\\/\'"\s=])\.foreman[\\/](?:(?:promises|inbox|rules|events|owner|eval)\.jsonl|config\.json|foreman\.py|'
+                       r'recall\.py|board\.py|board\.html|lexicon\.json)|(?:^|[\\/\'"\s=])\.claude[\\/]settings(?:\.local)?\.json', re.I)
+# (the board's API lives under /fm/api/ — a plain /api/ is every other local server, e.g. a studio's; the kit's installer is known
+#  by its own flags — «install.py» alone is half the world's setup scripts)
+EDIT_SHELL = re.compile(r'foreman\.py[\'"]?[^\n|;&]*--force|foreman\.py[\'"]?\s+board\b|--token-file|/fm/api/|'
+                        r'install\.py[^\n]*\s--(?:uninstall|modules|lang|purge)\b', re.I)
+ENGINE_CALL = re.compile(r'\S*foreman\.py[\'"]?\s+(?:rule|set|add|take|skip|comment|round|ledger|lesson|recall|check|compare|brief|status|json|'
+                         r'selftest|cues|hook)\b', re.I)
+PY_WRITE = re.compile(r'open\([^)]*[\'"][wa]\+?[\'"]|write_text\(|\.write\(|json\.dump\(', re.I)
+EDIT_OK = re.compile(r'(?:правка проверок|checks edited):\s*.{10,}', re.I)
+
+
+def edit_gate(transcript_path, last_msg=''):
+    """→ a block reason or '': this TURN (since the last row a person or the app typed) wrote Foreman's own files, the hook settings
+    or `lessons.guard_paths` directly, ran the installer / a forced edit / the board, or called the board's API — judged by the
+    TEXT of the tool calls, never by file times (the engine's own commands write rules.jsonl legitimately). Once per turn; the line
+    «правка проверок: <why ≥ 10 chars>» in the reply lets it pass"""
+    if CFG['lessons'].get('edit_gate', 'on') == 'off' or not transcript_path or not os.path.isfile(transcript_path):
+        return ''
+    ev = read_transcript(transcript_path)
+    start = next((i for i in range(len(ev) - 1, -1, -1) if _said(ev[i]) is not None), -1)
+    key = str(ev[start].get('timestamp') or start) if start >= 0 else ''
+    guard = [re.compile(x, re.I) for x in CFG['lessons'].get('guard_paths') or []]
+    what, last_text = [], ''
+    for e in ev[start + 1:]:
+        if e.get('type') != 'assistant':
+            continue
+        for b in _content(e):
+            if b.get('type') == 'text' and b.get('text'):
+                last_text = b['text']
+            if b.get('type') != 'tool_use':
+                continue
+            inp = b.get('input') or {}
+            name = b.get('name')
+            if name in ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'):
+                f = str(inp.get('file_path') or inp.get('notebook_path') or '')
+                if EDIT_FILE.search(f) or any(g.search(f) for g in guard):
+                    what.append(os.path.basename(f))
+            elif name in ('Bash', 'PowerShell'):
+                c = str(inp.get('command') or '')
+                plain = ENGINE_CALL.sub(' ', c)              # (the engine's own commands write through its checks — not an edit)
+                names = EDIT_FILE.search(plain) or any(g.search(plain) for g in guard)
+                if EDIT_SHELL.search(c) or (names and (WRITE_CMD.search(plain) or PY_WRITE.search(plain))):
+                    what.append(c.strip().splitlines()[0][:60])
+    if not what or EDIT_OK.search(f'{last_msg}\n{last_text}'):
+        return ''
+    if any(e.get('kind') == 'edit_gate' and e.get('key') == key for e in jsonl(EVENTS)):
+        return ''                                           # (once per turn)
+    append_jsonl(EVENTS, {'ts': dt.datetime.now().isoformat(timespec='seconds'), 'by': 'foreman', 'kind': 'edit_gate', 'key': key,
+                          'what': what[:5]})
+    return LX['edit_gate'].format(what='; '.join(dict.fromkeys(what))[:300])
+
+
+def unsigned_rules():
+    return [r for r in jsonl(RULES) if r.get('status') == 'active' and not r.get('accepted')]
 
 
 def stale():
@@ -690,7 +762,7 @@ def next_id(rows):
     return f'R-{n:03d}'
 
 
-def rule_cmd(a, probe_kinds=('file', 'grep', 'nogrep', 'doc')):
+def rule_cmd(a, probe_kinds=('file', 'grep', 'nogrep', 'doc', 'fresh'), quote_check=None):
     sub = a[0] if a else 'list'
     rows = jsonl(RULES)
     if sub == 'add':
@@ -717,14 +789,29 @@ def rule_cmd(a, probe_kinds=('file', 'grep', 'nogrep', 'doc')):
         if r.get('situation'):
             print(f"recall@3: {before if before is not None else '—'} → {eval_score()[1]}")
         return 0
-    if sub in ('accept', 'set', 'drop', 'confirm', 'replace'):
+    if sub == 'accept':
+        ids = [x for x in a[1:] if re.match(r'R-\d+$', x)]
+        quote = a[a.index('--quote') + 1] if '--quote' in a and a.index('--quote') + 1 < len(a) else ''
+        its = [next((x for x in rows if x.get('id') == i), None) for i in ids]
+        if not ids or None in its:
+            print(LX['no_rule'], ids); return 1
+        if quote_check is None:
+            print(LX['accept_lock']); return 1
+        ok, ts = quote_check(ids, quote)
+        if not ok:
+            print(ts); return 1
+        for it in its:
+            it.update(status='active', confirmed=today(), touched=today(),
+                      accepted={'ts': dt.datetime.now().isoformat(timespec='seconds'), 'by': 'owner-quote', 'quote': quote, 'msg_ts': ts})
+            ledger_add(f"kept -> {it['id']} accepted by the owner («{quote[:60]}») -> {it.get('when', '')[:80]}")
+        write_jsonl(RULES, rows)
+        print(' '.join(json.dumps(it, ensure_ascii=False) for it in its))
+        return 0
+    if sub in ('set', 'drop', 'confirm', 'replace'):
         it = next((x for x in rows if x.get('id') == (a[1] if len(a) > 1 else '')), None)
         if not it:
             print(LX['no_rule'], a[1:2]); return 1
-        if sub == 'accept':
-            it['status'], it['confirmed'] = 'active', today()
-            ledger_add(f"kept -> {it['id']} accepted by the owner -> {it.get('when', '')[:80]}")
-        elif sub == 'confirm':                              # (still true? — the date the brief's «not confirmed for N days» counts from)
+        if sub == 'confirm':                              # (still true? — the date the brief's «not confirmed for N days» counts from)
             if it.get('status') != 'active':
                 print(LX['only_active']); return 1
             it['confirmed'] = today()
@@ -773,9 +860,12 @@ def rule_cmd(a, probe_kinds=('file', 'grep', 'nogrep', 'doc')):
 
 def eval_cases():
     """the owner's own test set: every rule's situation must find it in the top 3; its not_situation must not bring it into the pack"""
-    live = [r for r in jsonl(RULES) if r.get('status') not in ('dropped', 'replaced')]
+    rows = jsonl(RULES)
+    live = [r for r in rows if r.get('status') not in ('dropped', 'replaced')]
     cases = [(r['situation'], r['id'], True) for r in live if r.get('situation')]
     cases += [(r['not_situation'], r['id'], False) for r in live if r.get('not_situation')]
+    cases += [(r['situation'], r['replaced_by'], True) for r in rows if r.get('status') == 'replaced' and r.get('situation')
+              and r.get('replaced_by')]                     # (the situation that made the old rule now tests its successor)
     cases += [(c['situation'], c.get('expect'), not c.get('forbid')) for c in jsonl(EVAL) if c.get('situation')]
     return cases
 

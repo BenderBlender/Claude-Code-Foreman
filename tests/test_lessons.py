@@ -66,6 +66,14 @@ def rows_file(path, rows):
     return path
 
 
+def owner_accepts(proj, rid, *more):
+    """the owner really says it (the prompt hook logs it), then Claude accepts with his words"""
+    words = f'{rid} принимаю, хорошее правило'
+    hook(proj, 'prompt', {'prompt': words})
+    return fm(proj, 'rule' if rid.startswith('R-') else 'set', 'accept' if rid.startswith('R-') else rid, *([rid] if rid.startswith('R-') else
+              ['status=accepted']), *more, '--quote', words)
+
+
 def install(proj, *extra):
     return subprocess.run([PY, os.path.join(KIT, 'install.py'), proj, '--yes', *extra], capture_output=True, encoding='utf-8')
 
@@ -113,7 +121,7 @@ try:
     check('recall: an unrelated situation finds nothing', 'R-001' not in out, out)
     code, out = fm(proj, 'recall', '--eval')
     check('eval: recall@3 1.0 and no false positive', 'recall@3 1.0' in out and ('ложных срабатываний 0' in out or 'false positives 0' in out), out)
-    fm(proj, 'rule', 'accept', 'R-001')
+    owner_accepts(proj, 'R-001')
     code, out = fm(proj, 'rule', 'set', 'R-001', 'hot=true')
     o = hook(proj, 'session', {'source': 'startup'})
     check('an accepted hot rule is in the session brief', code == 0 and 'R-001' in ctx(o), ctx(o)[-300:])
@@ -175,7 +183,7 @@ try:
     io.open(os.path.join(proj, 'README.md'), 'w', encoding='utf-8').write('# app\n')
     fm(proj, 'rule', 'add', json.dumps({'when': 'editing the README', 'do': 'no TODO left in it', 'quote': 'никаких TODO в README',
                                          'keys': 'readme todo'}, ensure_ascii=False))
-    fm(proj, 'rule', 'accept', 'R-002')
+    owner_accepts(proj, 'R-002')
     code, out = fm(proj, 'rule', 'set', 'R-002', 'guard=get:http://x', 'level=3')
     check('a guard must be a file probe', code == 1, out)
     fm(proj, 'rule', 'set', 'R-002', 'guard=nogrep:README.md:TODO', 'level=3')
