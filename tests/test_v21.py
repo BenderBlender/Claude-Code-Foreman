@@ -262,6 +262,8 @@ try:
     check('driving the board\'s API → block', o.get('decision') == 'block', o)
     o = hook(proj, 'stop', {'transcript_path': turn(('Bash', {'command': 'curl http://127.0.0.1:8001/api/presets'}))})
     check('another local server\'s /api/ → pass', o == {}, o)
+    o = hook(proj, 'stop', {'transcript_path': turn(('Bash', {'command': 'git add -A && git commit -q -m "board: foreman.py board --token-file F"'}))})
+    check('a commit message that only NAMES the board → pass', o == {}, o)
     o = hook(proj, 'stop', {'transcript_path': turn(('Bash', {'command': "python -c \"open('.foreman/promises.jsonl','w').write('')\""}))})
     check('a python one-liner writing promises.jsonl → block', o.get('decision') == 'block', o)
     tl = os.path.join(base, 'last.jsonl')

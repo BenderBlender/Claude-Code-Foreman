@@ -678,6 +678,7 @@ EDIT_FILE = re.compile(r'(?:^|[\\/\'"\s=])\.foreman[\\/](?:(?:promises|inbox|rul
 #  by its own flags — «install.py» alone is half the world's setup scripts)
 EDIT_SHELL = re.compile(r'foreman\.py[\'"]?[^\n|;&]*--force|foreman\.py[\'"]?\s+board\b|--token-file|/fm/api/|'
                         r'install\.py[^\n]*\s--(?:uninstall|modules|lang|purge)\b', re.I)
+COMMIT_MSG = re.compile(r'\bgit\s+commit\b[^\n]*?\s-(?:m|F)\s[\s\S]*', re.I)   # (the message to the end of the command)
 ENGINE_CALL = re.compile(r'\S*foreman\.py[\'"]?\s+(?:rule|set|add|take|skip|comment|round|ledger|lesson|recall|check|compare|brief|status|json|'
                          r'selftest|cues|hook)\b', re.I)
 PY_WRITE = re.compile(r'open\([^)]*[\'"][wa]\+?[\'"]|write_text\(|\.write\(|json\.dump\(', re.I)
@@ -711,7 +712,7 @@ def edit_gate(transcript_path, last_msg=''):
                 if EDIT_FILE.search(f) or any(g.search(f) for g in guard):
                     what.append(os.path.basename(f))
             elif name in ('Bash', 'PowerShell'):
-                c = str(inp.get('command') or '')
+                c = COMMIT_MSG.sub(' git commit ', str(inp.get('command') or ''))   # (a commit message that NAMES the board is no edit)
                 plain = ENGINE_CALL.sub(' ', c)              # (the engine's own commands write through its checks — not an edit)
                 names = EDIT_FILE.search(plain) or any(g.search(plain) for g in guard)
                 if EDIT_SHELL.search(c) or (names and (WRITE_CMD.search(plain) or PY_WRITE.search(plain))):
