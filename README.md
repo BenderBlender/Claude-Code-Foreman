@@ -197,9 +197,12 @@ with you on checked facts. It is offered at install — **you decide** whether y
   own file (`panel run <folder>`; one member can be given the critic's role, `--stance codex=против`) → optionally a second round where
   each sees the others' answers without names and names their errors (`panel review`) → Claude checks every claim against your code and
   writes `DECISION.md`: verified facts, what all agree on, where they differ and what was chosen, what each member gave.
-- **Safeguards:** a brief that looks like it carries a key, a password or an e-mail is never sent; before the brief leaves your machine
-  Claude asks you (`panel.ask_each_time`); members are only those you left switched on (`panel.members`); a member that fails or times
-  out never stops the others.
+- **Safeguards:** a brief that looks like it carries a key, a token, a password, an e-mail or a path with your user name is never sent;
+  it leaves your machine only after **you** said so — Claude asks, and the engine checks your words verbatim against your logged messages
+  (`panel.ask_each_time`, `--owner-ok`); only the members you switched on take part (a model found later joins switched off); a
+  command-line member works in an empty temporary folder (it sees the brief, nothing of your project) without the API keys it must not
+  use (Codex keeps your ChatGPT sign-in instead of a paid key); a member you wrote yourself into `config.json` runs only with
+  `allow_cmd`; a member that fails or hangs is stopped with its child processes and never stops the others.
 - Switch on later: `install.py <project> --modules promises,lessons,panel` (or `"panel": true` in `config.json → modules`).
 
 ## Who checks the checker (2.1)

@@ -7,10 +7,14 @@
   OpenAI-compatible APIs by the key variable's name, local Ollama / LM Studio, a web chat by hand. `panel detect | new | run | review`;
   answers in parallel, each in its own file with a header; a critic's stance; a second round without names; a failed member never
   stops the others.
-- Safeguards: a brief with keys / passwords / e-mails is not sent; keys never written; `ask_each_time`; only the switched-on members.
+- Safeguards (after Fable's review): a brief with keys / tokens / passwords / e-mails / user paths is not sent; it leaves only on the
+  owner's words checked against his log (`--owner-ok`); members off unless he switched them on (a CLI found later joins off;
+  `--members` cannot pick a switched-off one); a CLI member runs in an empty temporary folder with `strip_env` (Codex without
+  `OPENAI_API_KEY` / `OPENAI_BASE_URL`); a hung member is killed with its children (`taskkill /T`); self-written members need
+  `allow_cmd`; no key over plain http to another machine; member `params`; English texts; the sending logged in events.jsonl.
 - Skill `foreman-panel` (the procedure: brief → independent answers → checked claims → DECISION.md → the owner before building);
   CLAUDE.md rule 10 when the module is on.
-- Tests: panel 19 (fake CLI, fake OpenAI-compatible server).
+- Tests: panel 27 (fake CLI and shim, fake OpenAI-compatible server); every suite passes on a cp1251 console; the engine writes stderr in UTF-8 (TaskCompleted's reason).
 
 ## 2.1.1 — 2026-11-04 · The board starts by double-click on Windows
 

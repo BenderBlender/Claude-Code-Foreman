@@ -16,6 +16,10 @@ import time
 import urllib.error
 import urllib.request
 
+try:
+    sys.stdout.reconfigure(encoding='utf-8')            # (a cp1251 console: the checks' names carry «…» and «→»)
+except Exception:
+    pass
 KIT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PY = sys.executable
 fails = 0

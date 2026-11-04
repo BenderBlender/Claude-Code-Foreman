@@ -232,16 +232,21 @@ def panel_offer(proj, fdir, cfg, yes_all, modules):
         found = json.loads(r.stdout)
     except ValueError:
         found = []
-    keep = ('name', 'kind', 'label', 'enabled', 'cmd', 'stdin', 'base_url', 'key_env', 'model', 'models', 'note')
-    cfg['panel']['members'] = [{k: m[k] for k in keep if k in m} for m in found if m.get('kind') != 'subagent']
+    keep = ('name', 'kind', 'label', 'enabled', 'cmd', 'stdin', 'strip_env', 'base_url', 'key_env', 'model', 'models', 'params', 'note')
     outside = [m for m in found if m.get('kind') != 'subagent']
+    said_yes = modules is not None and 'panel' in modules  # (the owner named it — or answers «yes» below; otherwise nothing is switched on)
     if modules is None and not cfg['modules'].get('panel') and not yes_all:
         out(L['panel_found'])
         for m in found:
             out(f"  • {m.get('label', m['name'])} — {m.get('how', '')}" + (f" ({m['note']})" if m.get('note') else ''))
         if not outside:
             out(L['panel_none'])
-        cfg['modules']['panel'] = ask(L['panel_ask'], False)
+        said_yes = cfg['modules']['panel'] = ask(L['panel_ask'], False)
+    known = {m.get('name') for m in (cfg['panel'].get('members') or []) if isinstance(m, dict)}
+    for m in outside:                                     # (a member found NOW is on only if the owner said yes now — review M2)
+        if m['name'] not in known:
+            m['enabled'] = bool(said_yes and m.get('ready'))
+    cfg['panel']['members'] = [{k: m[k] for k in keep if k in m} for m in outside]
     write_json(os.path.join(fdir, 'config.json'), cfg)
 
 

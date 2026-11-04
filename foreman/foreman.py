@@ -966,6 +966,7 @@ def commands(a):
 if __name__ == '__main__':
     try:
         sys.stdout.reconfigure(encoding='utf-8')            # (a Windows console prints Cyrillic only this way)
+        sys.stderr.reconfigure(encoding='utf-8')            # (TaskCompleted's reason goes to stderr: cp1251 there reached Claude garbled)
     except Exception:
         pass
     sys.exit(main(sys.argv[1:]))
