@@ -88,9 +88,28 @@ try:
     subprocess.run([PY, os.path.join(KIT, 'install.py'), proj, '--yes', '--modules', 'promises,lessons,board'], capture_output=True)
     for title in ('export', 'import', 'settings'):
         fm(proj, 'add', json.dumps({'title': title, 'quote': title + ' please', 'probes': ['file:.foreman/foreman.py']}))
+    bat = io.open(os.path.join(proj, '.foreman', 'board.bat'), 'rb').read()
+    check('board.bat: plain CRLF lines (no CR CR LF), runs foreman.py board', b'\r\r' not in bat and b'foreman.py" board' in bat, bat[:120])
     code, out = subprocess.run([PY, os.path.join(proj, '.foreman', 'foreman.py'), 'board', '--port', str(free_port())], cwd=proj,
                                capture_output=True, encoding='utf-8', timeout=20).returncode, ''
     check('no terminal and no --token-file → the board does not start', code == 1)
+    import http.server as _hs
+    squatter = _hs.HTTPServer(('127.0.0.1', 0), _hs.SimpleHTTPRequestHandler)      # (an idle server on the configured port)
+    cfgp0 = os.path.join(proj, '.foreman', 'config.json')
+    c0 = json.load(io.open(cfgp0, encoding='utf-8'))
+    c0.setdefault('board', {})['port'] = squatter.server_address[1]
+    io.open(cfgp0, 'w', encoding='utf-8').write(json.dumps(c0, ensure_ascii=False))
+    tf = os.path.join(proj, 'tok_sq.json')
+    p0 = subprocess.Popen([PY, os.path.join(proj, '.foreman', 'foreman.py'), 'board', '--token-file', tf, '--no-open'], cwd=proj,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    for _ in range(100):
+        if os.path.exists(tf):
+            break
+        time.sleep(0.1)
+    port0 = json.load(io.open(tf, encoding='utf-8'))['port'] if os.path.exists(tf) else None
+    p0.terminate()
+    squatter.server_close()
+    check('the configured port busy → the board takes the next free one, never shares it', port0 and port0 != squatter.server_address[1], port0)
     B = Board(proj)
     code, d = B.call('/fm/api/state', token='')
     check('state without the token → 403', code == 403, d)

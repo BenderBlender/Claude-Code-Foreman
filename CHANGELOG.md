@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.1.1 — 2026-11-04 · The board starts by double-click on Windows
+
+- The board takes its port EXCLUSIVELY: http.server's default SO_REUSEADDR let it bind a port another local server already
+  listened on (Windows), and the browser reached that server instead (a directory listing). A busy configured port → the next
+  free one, printed in the console.
+- `.foreman/board.bat` had doubled carriage returns (CR CR LF); fixed.
+- Tests: board 28.
+
 ## 2.1 — 2026-11-04 · The board and who checks the checker
 
 - **The board** (`foreman.py board`, `board.py` + `board.html`, standard library, offline): every item on one page; drag between

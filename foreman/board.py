@@ -16,6 +16,7 @@ import json
 import os
 import re
 import secrets
+import socket
 import subprocess
 import sys
 import threading
@@ -513,6 +514,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._send(e.code, {'ok': False, 'error': e.msg, 'item': e.item})
 
 
+class Server(http.server.ThreadingHTTPServer):
+    """the port is taken EXCLUSIVELY: http.server's default SO_REUSEADDR lets a second server on Windows bind a port another one
+    already listens on — the browser then reaches either (04.11: an idle `python -m http.server 8765` answered the owner's board
+    link with a directory listing)"""
+    allow_reuse_address = False
+    daemon_threads = True
+
+    def server_bind(self):
+        if hasattr(socket, 'SO_EXCLUSIVEADDRUSE'):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
 def serve(fm, argv):
     global FM, TOKEN, PORT, REGS
     FM = fm
@@ -528,12 +542,19 @@ def serve(fm, argv):
         print('На доске нечего показывать: модуль promises выключен, а в config.json → board.registries пусто.')
         return 1
     TOKEN = secrets.token_hex(16)
-    try:
-        srv = http.server.ThreadingHTTPServer(('127.0.0.1', PORT), Handler)
-    except OSError as e:
-        print(f'порт {PORT} занят ({e}) — --port N')
+    srv, wanted = None, PORT
+    for p in [PORT] if '--port' in argv else range(PORT, PORT + 20):   # (the configured port busy → the next free one)
+        try:
+            srv = Server(('127.0.0.1', p), Handler)
+            PORT = p
+            break
+        except OSError:
+            continue
+    if not srv:
+        print(f'Порт {wanted} занят другой программой' + ('' if '--port' in argv else f' (и следующие 19 тоже)') + ' — укажите --port N.')
         return 1
-    srv.daemon_threads = True
+    if PORT != wanted:
+        print(f'Порт {wanted} занят другой программой — доска открыта на {PORT}.')
     url = f'http://127.0.0.1:{PORT}/?t={TOKEN}'
     if token_file:
         with io.open(token_file, 'w', encoding='utf-8') as f:

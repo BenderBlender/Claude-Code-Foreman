@@ -239,8 +239,8 @@ def install(proj, lang, yes_all, modules=None):
         io.open(os.path.join(fdir, n), 'a', encoding='utf-8').close()
     mark_legacy(fdir)
     if cfg['modules'].get('board'):                       # (a double-click opens the board: a console window is the owner's terminal)
-        io.open(os.path.join(fdir, 'board.bat'), 'w', encoding='utf-8', newline='\r\n').write(
-            f'@echo off\r\nchcp 65001 >nul\r\ncd /d "%~dp0.."\r\n"{sys.executable}" "%~dp0foreman.py" board\r\npause\r\n')
+        io.open(os.path.join(fdir, 'board.bat'), 'w', encoding='utf-8', newline='\r\n').write(   # (newline= makes each \n a \r\n)
+            f'@echo off\nchcp 65001 >nul\ncd /d "%~dp0.."\n"{sys.executable}" "%~dp0foreman.py" board\npause\n')
         io.open(os.path.join(fdir, 'board.sh'), 'w', encoding='utf-8', newline='\n').write(
             f'#!/bin/sh\ncd "$(dirname "$0")/.." && exec "{sys.executable}" .foreman/foreman.py board\n')
     if not os.path.exists(os.path.join(fdir, 'ledger.md')):
