@@ -231,6 +231,10 @@ for i in range(10):
     io.open(os.path.join(p3, '.foreman', 'config.json'), 'w', encoding='utf-8').write(json.dumps(c3))
     o = hook(p3, 'prompt', {'prompt': 'опять ты забыл подписать картинки, это неприемлемо'})
     check('record_hint: the lesson note points at the own book, not rule add', 'docs/rules.md' in ctx(o) and 'rule add' not in ctx(o), ctx(o))
+    install(p3)
+    md = io.open(os.path.join(p3, 'CLAUDE.md'), encoding='utf-8').read()
+    check('record_hint: the CLAUDE.md section points at the own book (an update keeps the hint and lessons only)',
+          'docs/rules.md' in md and 'rule add' not in md and 'rules.jsonl' not in md, md[-400:])
     r = subprocess.run([PY, os.path.join(KIT, 'install.py'), p3, '--uninstall', '--yes'], capture_output=True, encoding='utf-8')
     check('uninstall keeps the owner\'s own judge and council skill', all(os.path.exists(p) for p in own), r.stdout[-300:])
 finally:

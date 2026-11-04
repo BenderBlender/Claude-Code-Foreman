@@ -40,6 +40,12 @@ TXT = {
                             'Поправляйте и учите как обычно: ход не закончится, пока урок не записан (правило, журнал, память, навык).',
                             'Правила: python .foreman/foreman.py rule list · поиск: python .foreman/foreman.py recall <слова>'],
            'kept_own': 'Оставлен ваш файл (он отличается от копии набора): {p}',
+           'own_note': 'Прораб здесь ведёт только УРОКИ (модуль lessons) по книге правил самого проекта.',
+           'own_8': ('8. **Поправка владельца → урок.** Сообщение похоже на поправку («опять», «забыл», «я же просил»…) → протокол урока: '
+                     'правило уже есть? (`python .foreman/foreman.py recall …`); корень причины; где ещё повторится; запись: {hint}. В конце '
+                     'ответа — «записано: <где>» (после записи) или «не поправка: <почему>»: ход не закончится, пока запись не сделана.'),
+           'own_9': ('9. **Перед незнакомым действием** — `python .foreman/foreman.py recall <что собираюсь сделать>` (книга правил проекта, '
+                     'память, навыки). Решения владельца живут там же: {hint}; Прораб их только читает.'),
            'selftest_ok': 'Самопроверка: контроль сработал (подставные пробы провалились), хук сводки отвечает.',
            'selftest_bad': 'ВНИМАНИЕ: самопроверка не прошла — пришлите вывод выше разработчику.',
            'backup': 'Копия прежних настроек: {p}', 'un_done': 'Прораб убран (хуки, агенты, навык консилиума, раздел CLAUDE.md).',
@@ -59,6 +65,13 @@ TXT = {
                             'Correct and teach as usual: the turn does not end until the lesson is recorded (a rule, the ledger, memory, a skill).',
                             'Rules: python .foreman/foreman.py rule list · search: python .foreman/foreman.py recall <words>'],
            'kept_own': 'Your own file is kept (it differs from the kit copy): {p}',
+           'own_note': "Foreman runs only LESSONS here (module lessons), over the project's own rule book.",
+           'own_8': ("8. **The owner's correction → a lesson.** A message that looks like a correction (\"again\", \"you forgot\", \"I told you\"…) "
+                     '→ the lesson protocol: already a rule? (`python .foreman/foreman.py recall …`); the root cause; where else it repeats; '
+                     'record: {hint}. End the reply with «recorded: <where>» (after writing it) or «not a correction: <why>»: the turn does '
+                     'not end until the record is made.'),
+           'own_9': ('9. **Before an unfamiliar action** — `python .foreman/foreman.py recall <what I am about to do>` (the project\'s rule '
+                     "book, memory, skills). The owner's decisions live there too: {hint}; Foreman only reads them."),
            'selftest_ok': 'Self-test: the control worked (the fake probes failed), the session hook answers.',
            'selftest_bad': 'WARNING: the self-test failed — send the output above to the developer.',
            'backup': 'Previous settings backed up: {p}', 'un_done': 'Foreman removed (hooks, agents, the council skill, CLAUDE.md section).',
@@ -114,13 +127,15 @@ def stamp():
     return dt.datetime.now().strftime('%Y%m%d_%H%M%S')
 
 
-def hooks_block(proj):
+def hooks_block(proj, promises=True):
     py = sys.executable.replace('\\', '/')
     fm = os.path.join(proj, '.foreman', 'foreman.py').replace('\\', '/')
     cmd = lambda mode: f'"{py}" "{fm}" hook {mode}'           # noqa: E731
     return {'UserPromptSubmit': [{'hooks': [{'type': 'command', 'command': cmd('prompt'), 'timeout': 10}]}],
             'Stop': [{'hooks': [{'type': 'command', 'command': cmd('stop'), 'timeout': 10}]}],
-            'SessionStart': [{'matcher': 'startup|resume|compact', 'hooks': [{'type': 'command', 'command': cmd('session'), 'timeout': 30}]}]}
+            'SessionStart': [{'matcher': 'startup|resume|compact', 'hooks': [{'type': 'command', 'command': cmd('session'), 'timeout': 30}]}],
+            # (the CLI's own task list: a task naming P-… closes only without red probes — 2.1)
+            **({'TaskCompleted': [{'hooks': [{'type': 'command', 'command': cmd('task'), 'timeout': 30}]}]} if promises else {})}
 
 
 def strip_ours(settings):
@@ -143,7 +158,7 @@ def strip_ours(settings):
     return settings
 
 
-def claude_section(proj, lang, remove=False, promises=True):
+def claude_section(proj, lang, remove=False, promises=True, hint=''):
     p = os.path.join(proj, 'CLAUDE.md')
     s = io.open(p, encoding='utf-8').read() if os.path.exists(p) else ''
     if (START in s) != (END in s):                          # (one mark without the other: never guess where the section ends)
@@ -158,7 +173,10 @@ def claude_section(proj, lang, remove=False, promises=True):
             keep = [l for l in rest.splitlines() if l[:3] in ('8. ', '9. ')]
             note = ('Прораб здесь ведёт только УРОКИ (модуль lessons): правила владельца в `.foreman/rules.jsonl`.' if lang == 'ru' else
                     "Foreman runs only LESSONS here (module lessons): the owner's rules in `.foreman/rules.jsonl`.")
-            sec = head + '\n\n' + note + '\n\n' + '\n'.join(keep)
+            sec = head + '\n\n' + (TXT[lang]['own_note'] if hint else note) + '\n\n' + '\n'.join(keep)
+        if hint:                                            # (the project's own rule book: one book, not two — 04.11)
+            sec = '\n'.join(TXT[lang]['own_8'].format(hint=hint) if l[:3] == '8. ' else TXT[lang]['own_9'].format(hint=hint)
+                             if l[:3] == '9. ' else l for l in sec.splitlines())
         s = (s.rstrip('\n') + '\n\n' if s.strip() else '') + START + '\n' + sec + '\n' + END + '\n'
     if s.strip() or os.path.exists(p):
         io.open(p, 'w', encoding='utf-8', newline='\n').write(s)
@@ -193,7 +211,7 @@ def install(proj, lang, yes_all, modules=None):
         cfg['modules'] = {m: m in modules for m in ('promises', 'lessons', 'board')}
     cfg['budget'] = {'prompt_chars': 1200, 'session_chars': 2000, 'recall_hits': 3, 'recall_chars': 700, 'hot_rows': 5, **(cfg.get('budget') or {})}
     cfg['lessons'] = {'stop_gate': 'correction', 'extra_correction_cues': [], 'extra_teaching_cues': [], 'rules_extra': [],
-                      'record_paths': [], 'record_hint': '', 'memory_dir': 'auto', 'index_skills': True, **(cfg.get('lessons') or {})}
+                      'record_paths': [], 'record_hint': '', 'confirm_days': 60, 'memory_dir': 'auto', 'index_skills': True, **(cfg.get('lessons') or {})}
     write_json(os.path.join(fdir, 'config.json'), cfg)
     for n in ('promises.jsonl', 'inbox.jsonl', 'rules.jsonl', 'eval.jsonl', 'events.jsonl'):
         io.open(os.path.join(fdir, n), 'a', encoding='utf-8').close()
@@ -218,10 +236,10 @@ def install(proj, lang, yes_all, modules=None):
         out(L['backup'].format(p=bk))
     settings = strip_ours(read_json(sp, {}))
     hooks = settings.setdefault('hooks', {})
-    for ev, groups in hooks_block(proj).items():
+    for ev, groups in hooks_block(proj, cfg['modules'].get('promises', True)).items():
         hooks.setdefault(ev, []).extend(groups)
     write_json(sp, settings)
-    claude_section(proj, lang, promises=cfg['modules'].get('promises', True))
+    claude_section(proj, lang, promises=cfg['modules'].get('promises', True), hint=str(cfg['lessons'].get('record_hint') or '')[:160])
     out(L['done'])
     promises = cfg['modules'].get('promises', True)
     ok = selftest(proj, promises)

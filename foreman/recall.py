@@ -39,7 +39,7 @@ ROOT = os.path.abspath(os.path.join(HERE, os.pardir))
 RULES, LEDGER, EVAL, EVENTS, LEXICON, RULES_MD = (os.path.join(HERE, n) for n in
                                                   ('rules.jsonl', 'ledger.md', 'eval.jsonl', 'events.jsonl', 'lexicon.json', 'RULES.md'))
 DEFAULTS = {'stop_gate': 'correction', 'extra_correction_cues': [], 'extra_teaching_cues': [], 'rules_extra': [],
-            'record_paths': [], 'record_hint': '', 'memory_dir': 'auto', 'index_skills': True}
+            'record_paths': [], 'record_hint': '', 'confirm_days': 60, 'memory_dir': 'auto', 'index_skills': True}
 BUDGET = {'prompt_chars': 1200, 'session_chars': 2000, 'recall_hits': 3, 'recall_chars': 700, 'hot_rows': 5}
 CFG, LANG, LX = {'lessons': dict(DEFAULTS), 'budget': dict(BUDGET)}, 'ru', {}
 
@@ -72,6 +72,8 @@ TXT = {
                     'протокол урока (правило уже есть? корень, где ещё, ОДНО правило rule add … --situation) и строка «записано: R-…» — '
                     'или «не поправка: <почему>», если это не урок.'),
            'kind_c': 'ПОПРАВКУ', 'kind_t': 'УЧЁБУ', 'bad_level': 'уровень — число 0…3',
+           'stale': 'Правила давно не подтверждались (> {days} дн.; rule confirm / replace)',
+           'deferred_line': 'Отложенные уроки за 30 дней: {n} (python .foreman/foreman.py cues --deferred)',
            'guard': 'ПРОРАБ·страж: правило {id} («{when}») нарушено: {probe} красная. Исправь или скажи владельцу.',
            'hot': 'Горячие правила', 'guards_red': 'Стражи красные', 'proposed': 'Правила ждут вашего «да» (rule accept)',
            'added': 'записано: {id} (статус «предложено» — станет «принято» словом владельца: rule accept {id})',
@@ -101,6 +103,8 @@ TXT = {
                     'stopping: the lesson protocol (already a rule? root cause, where else, ONE rule add … --situation) and the line '
                     '«recorded: R-…» — or «not a correction: <why>» if it is not a lesson.'),
            'kind_c': 'CORRECTION', 'kind_t': 'TEACHING', 'bad_level': 'the level is a number 0…3',
+           'stale': 'Rules not confirmed for long (> {days} days; rule confirm / replace)',
+           'deferred_line': 'Deferred lessons in 30 days: {n} (python .foreman/foreman.py cues --deferred)',
            'guard': 'FOREMAN·guard: rule {id} («{when}») is broken: {probe} is red. Fix it or tell the owner.',
            'hot': 'Hot rules', 'guards_red': 'Red guards', 'proposed': 'Rules waiting for your «yes» (rule accept)',
            'added': 'recorded: {id} (status «proposed» — the owner\'s word makes it «active»: rule accept {id})',
@@ -277,7 +281,7 @@ def frontmatter(text, key):
 def rule_blocks():
     out = []
     for r in jsonl(RULES):
-        if r.get('status') == 'dropped' or not r.get('when'):
+        if r.get('status') in ('dropped', 'replaced') or not r.get('when'):
             continue
         text = f"{r.get('when')} → {r.get('do')} «{r.get('quote', '')}» {r.get('keys', '')} {' '.join(r.get('tags') or [])}"
         label = f"{r['id']} {'' if r.get('status') == 'active' else '(предл.) ' if LANG == 'ru' else '(proposed) '}" \
@@ -510,6 +514,7 @@ def log_cue(cls):
 KNOWLEDGE = re.compile(r'rules\.jsonl|ledger\.md|lexicon\.json|eval\.jsonl|foreman\.py[\'"]? (rule|ledger)|[\\/]memory[\\/][^\\/]+\.md|'
                        r'SKILL\.md|CLAUDE\.md', re.I)
 REFUSE = re.compile(r'не поправка:|не правка:|not a correction:', re.I)
+DEFER = re.compile(r'(?:отложено|deferred):\s*(.{0,200})', re.I)
 # (a shell command counts only when it WRITES: the engine's rule / ledger commands, a redirect, a copy, an in-place edit — review 04.11)
 WRITE_CMD = re.compile(r'foreman\.py[\'"]?\s+(rule\s+(add|accept|set|drop)|ledger|lesson)|(?<![0-9&])>>?\s*[^\s&|>]|\btee\b|'
                        r'Set-Content|Add-Content|Out-File|\bsed\s+-i|\b(cp|mv|copy|move)\b|Copy-Item|Move-Item', re.I)
@@ -603,6 +608,13 @@ def lesson_gate(transcript_path):
         recorded = any(os.path.exists(f) and os.path.getmtime(f) > ts for f in (RULES, LEDGER))
     if recorded or REFUSE.search(last_text):
         return ''
+    d = DEFER.search(last_text)
+    if d:                                                   # (a lesson put off WITH a reason: logged once, shown in the brief)
+        key = str(ev[idx].get('timestamp') or cls['text'][:80])
+        if not any(e.get('kind') == 'lesson_deferred' and e.get('key') == key for e in jsonl(EVENTS)):
+            append_jsonl(EVENTS, {'ts': dt.datetime.now().isoformat(timespec='seconds'), 'by': 'foreman', 'kind': 'lesson_deferred',
+                                  'key': key, 'head': cls['text'][:120], 'why': d.group(1).strip()[:200]})
+        return ''
     m = ALREADY.search(last_text)
     if m and any(r.get('id') == m.group(1) for r in jsonl(RULES)):
         return ''
@@ -643,6 +655,22 @@ def guard_reason(newly):
 def hot_lines():
     rows = [r for r in jsonl(RULES) if r.get('status') == 'active' and int(r.get('level') or 0) >= 2]
     return [f"{r['id']} {r.get('when')} → {r.get('do')}"[:120] for r in rows[:CFG['budget']['hot_rows']]]
+
+
+def stale():
+    """active rules not confirmed for `lessons.confirm_days` days (Copilot Memory: a fact unconfirmed for long is checked, not
+    trusted forever) — the date of the owner's accept, of `rule confirm`, else of the rule itself"""
+    days = int(CFG['lessons'].get('confirm_days') or 0)
+    if days <= 0:
+        return []
+    limit = (dt.date.today() - dt.timedelta(days=days)).isoformat()
+    return [r for r in jsonl(RULES) if r.get('status') == 'active' and str(r.get('confirmed') or r.get('date') or '9') < limit]
+
+
+def deferred(days=30):
+    """lessons the reply deferred («отложено: …») in the last `days` days"""
+    since = (dt.datetime.now() - dt.timedelta(days=days)).isoformat(timespec='seconds')
+    return [e for e in jsonl(EVENTS) if e.get('kind') == 'lesson_deferred' and str(e.get('ts', '')) >= since]
 
 
 def proposed():
@@ -689,13 +717,24 @@ def rule_cmd(a, probe_kinds=('file', 'grep', 'nogrep', 'doc')):
         if r.get('situation'):
             print(f"recall@3: {before if before is not None else '—'} → {eval_score()[1]}")
         return 0
-    if sub in ('accept', 'set', 'drop'):
+    if sub in ('accept', 'set', 'drop', 'confirm', 'replace'):
         it = next((x for x in rows if x.get('id') == (a[1] if len(a) > 1 else '')), None)
         if not it:
             print(LX['no_rule'], a[1:2]); return 1
         if sub == 'accept':
-            it['status'] = 'active'
+            it['status'], it['confirmed'] = 'active', today()
             ledger_add(f"kept -> {it['id']} accepted by the owner -> {it.get('when', '')[:80]}")
+        elif sub == 'confirm':                              # (still true? — the date the brief's «not confirmed for N days» counts from)
+            if it.get('status') != 'active':
+                print(LX['only_active']); return 1
+            it['confirmed'] = today()
+            ledger_add(f"kept -> {it['id']} confirmed -> {it.get('when', '')[:80]}")
+        elif sub == 'replace':                              # (a rule that stopped being true is marked, never erased — Graphiti)
+            new = a[a.index('--by') + 1] if '--by' in a and a.index('--by') + 1 < len(a) else ''
+            if new == it['id'] or not any(x.get('id') == new for x in rows):
+                print(LX['no_rule'], new or '--by ?'); return 1
+            it['status'], it['replaced_by'] = 'replaced', new
+            ledger_add(f"revised -> {it['id']} replaced by {new} -> {it.get('when', '')[:80]}")
         elif sub == 'drop':
             it['status'] = 'dropped'
             why = a[a.index('--why') + 1] if '--why' in a and a.index('--why') + 1 < len(a) else ''
@@ -734,8 +773,9 @@ def rule_cmd(a, probe_kinds=('file', 'grep', 'nogrep', 'doc')):
 
 def eval_cases():
     """the owner's own test set: every rule's situation must find it in the top 3; its not_situation must not bring it into the pack"""
-    cases = [(r['situation'], r['id'], True) for r in jsonl(RULES) if r.get('situation') and r.get('status') != 'dropped']
-    cases += [(r['not_situation'], r['id'], False) for r in jsonl(RULES) if r.get('not_situation') and r.get('status') != 'dropped']
+    live = [r for r in jsonl(RULES) if r.get('status') not in ('dropped', 'replaced')]
+    cases = [(r['situation'], r['id'], True) for r in live if r.get('situation')]
+    cases += [(r['not_situation'], r['id'], False) for r in live if r.get('not_situation')]
     cases += [(c['situation'], c.get('expect'), not c.get('forbid')) for c in jsonl(EVAL) if c.get('situation')]
     return cases
 
@@ -787,6 +827,10 @@ def recall_cmd(a):
 
 
 def cues_cmd(a):
+    if '--deferred' in a:
+        for e in deferred(3650):
+            print(f"{e.get('ts', '')[:16]}  «{e.get('head', '')}» — {e.get('why', '')}")
+        return 0
     c = Counter((e.get('cue_kind'), e.get('cue')) for e in jsonl(EVENTS) if e.get('kind') == 'cue')
     print(LX['cues_head'])
     for (kind, cue), n in c.most_common(20):

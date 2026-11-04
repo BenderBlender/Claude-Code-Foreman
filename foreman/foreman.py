@@ -65,11 +65,12 @@ AGENT_NOTE = re.compile(r'^(Another Claude session sent a message|\[SYSTEM NOTIF
 
 T = {
     'ru': {'head': 'ПРОРАБ ({when}; реестр .foreman/promises.jsonl): {n} пунктов · по пробам готово {ok} · частично {part} · нет {no}{unk} · ждут вас {wait}',
-           'unk': ' · не проверено {n} (сервер не отвечает)', 'doing': 'В работе', 'next': 'Следующие по приоритету',
+           'unk': ' · неизвестно {n} (проба не смогла выполниться: check P-…)', 'doing': 'В работе', 'next': 'Следующие по приоритету',
            'built': 'Пробы зелёные, а статус «todo/doing» — проверить и отметить «accepted»', 'red': 'КРАСНОЕ — «accepted», а пробы не сходятся',
            'stale': 'В работе без движения > {d} дн.', 'orphans': 'Сироты (файл, на который никто не ссылается)',
            'inbox': 'Входящие просьбы НЕ разобраны: {n} — {list} → foreman.py add {{…}} + take I-… --as P-…, или skip I-… --why «…»',
            'ctrl_ok': 'Контроль: ок (подставные пробы провалились)', 'ctrl_bad': 'Контроль СЛОМАН — подставная проба прошла, пробам не верить',
+           'task_red': 'ПРОРАБ: задача называет {id}, но у пункта красные пробы: {probes}. Доделай — или скажи владельцу, почему закрываешь.', 'why': {'down': 'не отвечает', 'cmd-off': 'cmd: выключен (config allow_cmd)', 'no-files': 'шаблон не нашёл ни одного файла', 'bad-regex': 'сломанная регулярка', 'timeout': 'таймаут', 'no-access': 'нет доступа', 'unknown-kind': 'неизвестный вид пробы'},
            'park': 'Парковка: новая просьба посреди работы → текущему пункту set P-… status=parked next="…", потом новое.',
            'status_title': '# Состояние проекта — {when}', 'status_lead': 'Реестр: {n} пунктов. По проверке: готово {ok}, частично {part}, не сделано {no}.',
            'waiting': 'Ждёт вашего слова', 'doing_h': 'В работе', 'next_h': 'Дальше по приоритету', 'built_h': 'Сделано, ждёт вашей приёмки',
@@ -100,11 +101,12 @@ T = {
            'guarded': 'Поле «{k}» ведёт сам Прораб; менять — только с --force (и тогда rounds — JSON-список).',
            'bad_json': 'не JSON: {err}'},
     'en': {'head': 'FOREMAN ({when}; registry .foreman/promises.jsonl): {n} items · by probes done {ok} · partly {part} · not {no}{unk} · waiting for you {wait}',
-           'unk': ' · not checked {n} (server down)', 'doing': 'In progress', 'next': 'Next by priority',
+           'unk': ' · unknown {n} (a probe could not run: check P-…)', 'doing': 'In progress', 'next': 'Next by priority',
            'built': 'Probes green but status «todo/doing» — verify and mark «accepted»', 'red': 'RED — «accepted» but the probes disagree',
            'stale': 'In progress with no move > {d} days', 'orphans': 'Orphans (a file nothing references)',
            'inbox': 'Unprocessed asks in the inbox: {n} — {list} → foreman.py add {{…}} + take I-… --as P-…, or skip I-… --why "…"',
            'ctrl_ok': 'Control: ok (the fake probes failed)', 'ctrl_bad': 'Control BROKEN — a fake probe passed, do not trust the probes',
+           'task_red': 'FOREMAN: the task names {id}, but the item has red probes: {probes}. Finish it — or tell the owner why you close it.', 'why': {'down': 'does not answer', 'cmd-off': 'cmd: is off (config allow_cmd)', 'no-files': 'the pattern found no file', 'bad-regex': 'a broken regex', 'timeout': 'timeout', 'no-access': 'no access', 'unknown-kind': 'an unknown probe kind'},
            'park': 'Parking: a new ask mid-work → set P-… status=parked next="…" on the current item first, then the new one.',
            'status_title': '# Project status — {when}', 'status_lead': 'Registry: {n} items. By the check: done {ok}, partly {part}, not done {no}.',
            'waiting': 'Waiting for your word', 'doing_h': 'In progress', 'next_h': 'Next by priority', 'built_h': 'Built, waiting for your acceptance',
@@ -262,8 +264,17 @@ def rounds_of(item):
 _server = {}
 
 
+WHY = {}                                                    # probe → why it is «unknown» (2.1: shown by check and the brief)
+
+
+def _unknown(p, why):
+    WHY[p] = why
+    return None
+
+
 def probe(p):
     kind, _, rest = p.partition(':')
+    WHY.pop(p, None)
     try:
         if kind == 'file':
             return bool(glob.glob(path_of(rest), recursive=True))
@@ -281,14 +292,29 @@ def probe(p):
             except urllib.error.HTTPError as e:
                 return e.code < 400
             except Exception:
-                return None                         # (down → «not checked», never «not built»)
+                return _unknown(p, 'down')                  # (down → «unknown», never «not built»)
         if kind == 'cmd':
             if not CFG.get('allow_cmd'):
-                return None
+                return _unknown(p, 'cmd-off')
             return subprocess.run(rest, shell=True, cwd=ROOT, capture_output=True, timeout=20).returncode == 0
-    except (re.error, subprocess.TimeoutExpired, OSError):
-        return False
-    return False
+        if kind == 'fresh':
+            # fresh:<result>:<glob> — the result (a test report, a render, a build) is newer than every file of the glob: a test
+            # counts only if it ran AFTER the last edit (AgentGate / claim-check «evidence freshness», 2.1)
+            target, _, pattern = rest.partition(':')
+            if not os.path.exists(path_of(target)):
+                return False
+            srcs = [f for f in glob.glob(path_of(pattern), recursive=True)
+                    if os.path.isfile(f) and os.path.normcase(os.path.abspath(f)) != os.path.normcase(os.path.abspath(path_of(target)))]
+            if not srcs:
+                return _unknown(p, 'no-files')
+            return os.path.getmtime(path_of(target)) >= max(os.path.getmtime(f) for f in srcs)
+    except re.error:
+        return _unknown(p, 'bad-regex')
+    except subprocess.TimeoutExpired:
+        return _unknown(p, 'timeout')
+    except OSError:
+        return _unknown(p, 'no-access')
+    return _unknown(p, 'unknown-kind')
 
 
 def check_item(item):
@@ -301,12 +327,10 @@ def state_of(vals):
         state = 'no-probes'
     elif all(v is True for v in vals):
         state = 'done'
-    elif any(v is True for v in vals):
-        state = 'partly'
-    elif any(v is None for v in vals):
-        state = 'unchecked'
+    elif any(v is False for v in vals):                     # (a real «no» outranks an «unknown»: 2.0 hid a red behind a grey)
+        state = 'partly' if any(v is True for v in vals) else 'not'
     else:
-        state = 'not'
+        state = 'unchecked'                                 # (green + «unknown» is not «done»: 2.0 called it «partly»)
     return state
 
 
@@ -532,6 +556,25 @@ def hook_prompt(inp):
 hook_inbox = hook_prompt                                    # (1.1 settings call «hook inbox» — still works)
 
 
+def hook_task(inp):
+    """TaskCompleted (Claude Code's own task list — the CLI; the desktop app's list does not fire it): a task that names P-… closes
+    only when that item has no red probe; exit 2 + the reason on stderr keeps it open (Claude Code hooks docs, checked 04.11)"""
+    if not CFG['modules'].get('promises'):
+        return 0
+    ids = sorted(set(re.findall(r'\bP-\d+\b', f"{inp.get('task_subject') or ''} {inp.get('task_description') or ''}")))
+    reg = {i.get('id'): i for i in jsonl(REG)}
+    bad = []
+    for pid in ids:
+        if pid in reg:
+            state, res = check_item(reg[pid])
+            if state in ('not', 'partly'):
+                bad.append(L['task_red'].format(id=pid, probes='; '.join(p for p, v in res if v is False)[:300]))
+    if bad:
+        sys.stderr.write('\n'.join(bad)[:1500] + '\n')
+        return 2
+    return 0
+
+
 def hook_stop(inp):
     """Stop: ONE block at most — the untriaged asks, a correction that left no record, a guard that just turned red"""
     if inp.get('stop_hook_active'):
@@ -569,6 +612,12 @@ def lessons_lines():
         out.append(R.LX['hot'] + ': ' + ' · '.join(hot))
     if red:
         out.append(R.LX['guards_red'] + ': ' + ', '.join(f"{r['id']} {r['guard']}" for r in red))
+    old = R.stale()
+    if old:
+        out.append(R.LX['stale'].format(days=R.CFG['lessons'].get('confirm_days', 60)) + ': ' + ', '.join(r['id'] for r in old[:8]))
+    dfr = R.deferred()
+    if dfr:
+        out.append(R.LX['deferred_line'].format(n=len(dfr)))
     return out
 
 
@@ -598,7 +647,7 @@ def council_cmd(a):
             print(L['no_root'], root); return 1
         state, res, ctrl, nc = probe_report(it, root)
         for p, v in res:
-            print(f'  {MARKS[v]} {p}')
+            print(f'  {MARKS[v]} {p}' + (f"  ({L['why'].get(WHY[p], WHY[p])})" if v is None and WHY.get(p) else ''))
         if nc:
             print('  ' + L['cmp_nc'].format(probes='; '.join(nc)))
         print(f"{it['id']} @ {root}: {state} ({sum(v is True for _, v in res)}/{len(res)})" + ('' if ctrl else ' · ' + L['cmp_ctrl']))
@@ -661,7 +710,9 @@ def main(a):
     if a[:1] == ['hook']:
         try:
             with locked():
-                {'prompt': hook_prompt, 'inbox': hook_prompt, 'stop': hook_stop, 'session': hook_session}[a[1]](_stdin())
+                code = {'prompt': hook_prompt, 'inbox': hook_prompt, 'stop': hook_stop, 'session': hook_session,
+                        'task': hook_task}[a[1]](_stdin())
+            return 2 if code == 2 else 0                    # (only TaskCompleted blocks by an exit code)
         except Exception:                                   # (a hook must never break the session)
             pass
         return 0
