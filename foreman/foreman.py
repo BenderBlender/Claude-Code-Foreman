@@ -99,6 +99,8 @@ T = {
            'cmp_best': 'Больше всего зелёных проб: {labels}', 'cmp_ctrl': 'контроль СЛОМАН — этой проверке не верить',
            'no_root': 'нет такой папки:',
            'cmp_none': 'Ни один кандидат не прошёл ни одной пробы.',
+           'ev_comment': 'комментарий «{t}»', 'ev_priority': 'приоритет {t}', 'ev_accept': 'принято', 'ev_triage': '→ завести пункт',
+           'ev_skip': 'не задача', 'ev_rank': 'порядок в колонках изменён — учесть при выборе следующего', 'ev_more': 'и ещё {n}',
            'blocked': 'ждёт {ids}', 'events': 'ПРОРАБ·доска (владелец): {list}', 'commented': 'комментарий записан: {id}',
            'lessons_line': 'Уроки: правил {n} · ждут вашего «да» {p} · горячих {h} · стражей красных {g}',
            'cmp_nc': 'не сравнимо на кандидатах (сервер лидера или абсолютный путь): {probes}',
@@ -141,6 +143,8 @@ T = {
            'cmp_best': 'Most green probes: {labels}', 'cmp_ctrl': 'control BROKEN — do not trust this check',
            'no_root': 'no such folder:',
            'cmp_none': 'No candidate passes any probe.',
+           'ev_comment': 'comment «{t}»', 'ev_priority': 'priority {t}', 'ev_accept': 'accepted', 'ev_triage': '→ file an item',
+           'ev_skip': 'not a task', 'ev_rank': 'column order changed — use it to pick the next', 'ev_more': 'and {n} more',
            'blocked': 'waits for {ids}', 'events': 'FOREMAN·board (owner): {list}', 'commented': 'comment saved: {id}',
            'lessons_line': 'Lessons: {n} rules · waiting for your «yes» {p} · hot {h} · red guards {g}',
            'cmp_nc': 'not comparable on candidates (the leader\'s server or an absolute path): {probes}',
@@ -521,17 +525,41 @@ def append_event(row):
 
 
 def owner_events():
-    """the owner's unseen moves on the board (2.1) → one line, ≤ 300 chars; marked seen"""
+    """the owner's unseen moves on the board (2.1) → one line, ≤ 300 chars, grouped by item, statuses in the registry's words;
+    marked seen in the same call (DESIGN_board §3)"""
     rows = jsonl(EVENTS)
-    new = [e for e in rows if e.get('by') == 'owner' and not e.get('seen')]
+    new = [e for e in rows if e.get('by') in ('owner', 'owner-board') and not e.get('seen')]
     if not new:
         return ''
     for e in new:
         e['seen'] = True
     write_jsonl(EVENTS, rows)
-    items = [f"{e.get('id')} {e.get('kind')}" + (f" → {e['to']}" if e.get('to') else '') + (f" «{e['text'][:60]}»" if e.get('text') else '')
-             for e in new]
-    return L['events'].format(list='; '.join(items))[:300]
+    groups, order, ranks = {}, [], 0
+    for e in new:
+        if e.get('kind') == 'rank':
+            ranks += 1
+            continue
+        k = (e.get('reg', 'kit'), e.get('id'))
+        if k not in groups:
+            groups[k] = []
+            order.append(k)
+        kind = e.get('kind')
+        groups[k].append(f"→ {e['to']}" if kind == 'move' else L['ev_comment'].format(t=str(e.get('text', ''))[:60]) if kind == 'comment'
+                         else L['ev_priority'].format(t=e.get('to', '')) if kind == 'priority' else L['ev_accept'] if kind == 'accept'
+                         else L['ev_triage'] if kind == 'triage' else L['ev_skip'] if kind == 'skip'
+                         else f"→ {e.get('to', '')}" if kind == 'rule' else str(kind))
+    parts = [f"{'' if reg in ('kit', 'rules') else reg + ' '}{pid} " + ', '.join(dict.fromkeys(v)) for (reg, pid), v in
+             ((k, groups[k]) for k in order)]
+    if ranks:
+        parts.append(L['ev_rank'])
+    out, used = [], 0
+    for n, p in enumerate(parts):
+        if used + len(p) > 240:
+            out.append(L['ev_more'].format(n=len(parts) - n))
+            break
+        out.append(p)
+        used += len(p) + 2
+    return L['events'].format(list='; '.join(out))[:300]
 
 
 def fit(parts, budget):
@@ -797,6 +825,10 @@ def council_cmd(a):
 def main(a):
     if not os.path.exists(REG):
         io.open(REG, 'a', encoding='utf-8').close()
+    if a[:1] == ['board']:                                 # (the owner's task board, 2.1 — board.py next to this file)
+        sys.path.insert(0, HERE)
+        import board
+        return board.serve(sys.modules[__name__], a[1:])
     if a[:1] == ['hook']:
         try:
             with locked():

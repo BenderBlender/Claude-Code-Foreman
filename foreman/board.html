@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="{{LANG}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Прораб · доска</title>
+<style nonce="{{NONCE}}">
+/* Foreman 2.1 — the task board. Offline, no CDN; colours are variables, two themes; big text (the owner's screen 2560×1440). */
+:root {
+  --bg: #f4f2ee; --panel: #ffffff; --card: #ffffff; --ink: #1d1f24; --dim: #545a66; --line: #d9d5cc; --accent: #2457c5;
+  --ok: #1f7a3a; --bad: #b3261e; --unk: #8a8f99; --warn: #8a5a00; --chip: #ece8e0; --needs: #fff6df; --broken: #fde9e7;
+  --p0: #b3261e; --p1: #9a5200; --p2: #3c4250; --p3: #6b7280; --shadow: 0 1px 2px rgba(0,0,0,.08), 0 2px 8px rgba(0,0,0,.05);
+  --fs: 17px; --fs-title: 19px; --col-min: 0;
+}
+@media (min-width: 2200px) { :root { --fs: 18px; --fs-title: 20px; } }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #17191d; --panel: #1f2228; --card: #262a31; --ink: #eceff4; --dim: #b4bac6; --line: #3a3f48; --accent: #8cb4ff;
+          --ok: #6fd08c; --bad: #ff8a80; --unk: #a0a6b2; --warn: #f2c56b; --chip: #323741; --needs: #2c2a1f; --broken: #3a2523;
+          --p0: #ff8a80; --p1: #f2b36b; --p2: #c9cfda; --p3: #9aa1ad; --shadow: 0 1px 2px rgba(0,0,0,.4); }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font: var(--fs)/1.4 system-ui, "Segoe UI", Roboto, sans-serif; }
+body { overflow-x: hidden; }
+button { font: inherit; min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel);
+         color: var(--ink); cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
+button.small { min-height: 44px; padding: 0 12px; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+input, select, textarea { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+                          min-height: 44px; padding: 6px 12px; }
+header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line);
+         position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+header h1 { font-size: calc(var(--fs) + 4px); margin: 0 12px 0 0; }
+header .regs { display: flex; gap: 8px; }
+header .regs button.on { background: var(--chip); border-color: var(--accent); }
+header input.search { width: 22em; max-width: 30vw; }
+header .when { margin-left: auto; color: var(--dim); }
+.banner { padding: 10px 20px; font-weight: 600; display: none; align-items: center; gap: 16px; }
+.banner.show { display: flex; }
+.banner.err { background: var(--broken); color: var(--bad); }
+.strip { margin: 12px 20px 0; padding: 10px 16px; border-radius: 12px; }
+.strip h2 { font-size: var(--fs); margin: 0 0 6px; letter-spacing: .04em; text-transform: uppercase; }
+.strip.needs { background: var(--needs); }
+.strip.broken { background: var(--broken); }
+.strip.hidden { display: none; }
+.row { display: flex; align-items: center; gap: 12px; padding: 2px 0; border-top: 1px solid var(--line); }
+.row:first-of-type { border-top: 0; }
+.row .what { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .what b { font-weight: 600; }
+.row .why { color: var(--dim); }
+.row .acts { display: flex; gap: 8px; flex: 0 0 auto; }
+.more { color: var(--accent); background: none; border: 0; padding: 0 4px; min-height: 44px; }
+.board { display: grid; gap: 12px; padding: 12px 20px 20px; grid-template-columns: repeat(5, minmax(0, 1fr)) 72px 72px; align-items: start; }
+.board.open-accepted { grid-template-columns: repeat(5, minmax(0, 1fr)) 320px 72px; }
+.board.open-dropped { grid-template-columns: repeat(5, minmax(0, 1fr)) 72px 320px; }
+.board.open-accepted.open-dropped { grid-template-columns: repeat(5, minmax(0, 1fr)) 300px 300px; }
+.col { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; min-width: 0; display: flex; flex-direction: column;
+       max-height: calc(100vh - 150px); }
+.col > .head { position: sticky; top: 0; padding: 10px 14px; border-bottom: 1px solid var(--line); display: flex; align-items: baseline;
+               gap: 10px; background: var(--panel); border-radius: 14px 14px 0 0; }
+.col > .head .name { font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
+.col > .head .n { color: var(--dim); }
+.col > .cards { overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 120px; }
+.col.drop-target { outline: 3px dashed var(--accent); outline-offset: -3px; }
+.col.rail { cursor: pointer; align-items: center; }
+.col.rail > .head { writing-mode: vertical-rl; transform: rotate(180deg); border: 0; padding: 14px 8px; background: none; }
+.col.rail > .cards { display: none; }
+.col.rail.open { cursor: default; align-items: stretch; }
+.col.rail.open > .head { writing-mode: horizontal-tb; transform: none; border-bottom: 1px solid var(--line); cursor: pointer; }
+.col.rail.open > .cards { display: flex; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; box-shadow: var(--shadow);
+        cursor: grab; min-width: 0; }
+.card:hover { border-color: var(--accent); }
+.card.dragging { opacity: .45; }
+.card.gap-before { box-shadow: 0 -4px 0 0 var(--accent), var(--shadow); }
+.card .top { display: flex; gap: 8px; align-items: center; color: var(--dim); font-size: calc(var(--fs) - 1px); flex-wrap: wrap; }
+.card .reg { text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+.card .pid { font-weight: 700; color: var(--ink); }
+.prio { border: 1px solid currentColor; border-radius: 8px; padding: 0 6px; font-weight: 600; }
+.prio.p0 { color: var(--p0); } .prio.p1 { color: var(--p1); } .prio.p2 { color: var(--p2); } .prio.p3 { color: var(--p3); }
+.card .title { font-size: var(--fs-title); font-weight: 600; margin: 4px 0 6px; display: -webkit-box; -webkit-line-clamp: 3;
+               -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.card .meta { display: flex; gap: 12px; align-items: center; color: var(--dim); flex-wrap: wrap; }
+.probes { display: inline-flex; gap: 3px; align-items: center; }
+.sq { width: 14px; height: 14px; border-radius: 3px; display: inline-block; background: var(--unk); }
+.sq.t { background: var(--ok); } .sq.f { background: var(--bad); }
+.chk-done { color: var(--ok); font-weight: 700; } .chk-not { color: var(--bad); font-weight: 700; } .chk-partly { color: var(--warn); font-weight: 700; }
+.chk-unchecked, .chk-no-probes { color: var(--dim); }
+.tag { background: var(--chip); border-radius: 8px; padding: 0 8px; }
+.card .waits { margin-top: 6px; color: var(--warn); }
+.panel { position: fixed; top: 0; right: 0; height: 100vh; width: 480px; max-width: 92vw; background: var(--panel); border-left: 1px solid var(--line);
+         box-shadow: -8px 0 24px rgba(0,0,0,.18); transform: translateX(105%); transition: transform .18s ease; z-index: 10; display: flex;
+         flex-direction: column; }
+@media (min-width: 2200px) { .panel { width: 560px; } }
+.panel.open { transform: none; }
+.panel .phead { padding: 14px 18px; border-bottom: 1px solid var(--line); display: flex; gap: 12px; align-items: flex-start; }
+.panel .phead .t { flex: 1; font-size: var(--fs-title); font-weight: 700; overflow-wrap: anywhere; }
+.panel .pbody { overflow-y: auto; padding: 14px 18px 30px; }
+.panel h3 { font-size: var(--fs); text-transform: uppercase; letter-spacing: .05em; color: var(--dim); margin: 18px 0 6px; }
+.panel .quote { font-size: var(--fs); background: var(--chip); padding: 10px 12px; border-radius: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.panel .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.panel ul { list-style: none; padding: 0; margin: 0; }
+.panel li { padding: 6px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.panel li:first-child { border-top: 0; }
+.ok { color: var(--ok); font-weight: 700; } .bad { color: var(--bad); font-weight: 700; } .unk { color: var(--dim); font-weight: 700; }
+.panel textarea { width: 100%; min-height: 90px; resize: vertical; }
+.dim { color: var(--dim); }
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; z-index: 20; }
+.modal.show { display: flex; }
+.modal .box { background: var(--panel); border-radius: 14px; padding: 22px 24px; max-width: 640px; width: 92vw; box-shadow: var(--shadow); }
+.modal .box p { margin: 0 0 18px; font-size: calc(var(--fs) + 1px); }
+.modal .box .acts { display: flex; gap: 10px; justify-content: flex-end; }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="h-title">Прораб · доска</h1>
+  <div class="regs" id="regs"></div>
+  <input class="search" id="search" type="search" autocomplete="off">
+  <button id="recheck"></button>
+  <span class="when" id="when"></span>
+</header>
+<div class="banner err" id="lost"></div>
+<div class="banner err" id="conflict"><span id="conflict-text"></span><button id="conflict-retry"></button><button id="conflict-close"></button></div>
+<section class="strip needs hidden" id="needs"><h2 id="needs-h"></h2><div id="needs-rows"></div></section>
+<section class="strip broken hidden" id="broken"><h2 id="broken-h"></h2><div id="broken-rows"></div></section>
+<main class="board" id="board"></main>
+<aside class="panel" id="panel" aria-hidden="true"><div class="phead"><div class="t" id="p-title"></div><button id="p-close">✕</button></div>
+  <div class="pbody" id="p-body"></div></aside>
+<div class="modal" id="modal"><div class="box"><p id="m-text"></p><div class="acts"><button id="m-no"></button><button class="primary" id="m-yes"></button></div></div></div>
+<script nonce="{{NONCE}}">
+'use strict';
+const T = {
+  ru: { title: 'Прораб · доска', all: 'Все', search: 'поиск: номер, слова', recheck: 'Проверить сейчас', updated: 'обновлено',
+        ctrl_ok: 'контроль ок', ctrl_bad: 'КОНТРОЛЬ СЛОМАН', lost: 'Связь с Прорабом потеряна — доска не обновляется. Сервер остановлен?',
+        needs: 'Ждут вас', broken: 'Что сломано', more: 'ещё', less: 'свернуть', retry: 'Повторить', close: 'Закрыть',
+        cols: { todo: 'Не начато', doing: 'В работе', waiting: 'Ждут вас', parked: 'Отложено', inbox: 'Входящие', accepted: 'Принято', dropped: 'Снято' },
+        act: { accept: 'Принять', doing: 'В работу', comment: 'Ответить', triage: 'Завести пункт', skip: 'Не задача', rule_accept: 'Принять правило',
+               rule_drop: 'Отклонить', drop: 'Снять', up: '↑', down: '↓', send: 'Отправить' },
+        no_probes: 'без проб', comments: 'комм.', days: 'дн.', council: 'консилиум', waits: 'ждёт', quote: 'Цитата (дословно)',
+        source: 'Источник', next: 'Следующий шаг', probes: 'Пробы', hist: 'История', priority: 'Приоритет', status: 'Статус',
+        comment_ph: 'Комментарий (Ctrl+Enter — отправить)', yes: 'Да', no: 'Отмена',
+        confirm_accept: 'Принять {id}? Это ваше слово: запись попадёт в журнал владельца, и Claude увидит её.',
+        confirm_red: 'У {id} есть красные пробы. Всё равно принять? Пункт будет краснеть в «Что сломано».',
+        confirm_drop: 'Снять {id}? Он уйдёт в «Снято» (не удаляется, можно вернуть).', accepted_by: 'принято',
+        legacy: 'принято до 2.1', void: 'приёмка снята', state: { done: 'готово', partly: 'частично', not: 'нет', unchecked: 'неизвестно', 'no-probes': 'без проб' },
+        inbox_reg: 'входящие', empty: 'пусто' },
+  en: { title: 'Foreman · board', all: 'All', search: 'search: id, words', recheck: 'Check now', updated: 'updated',
+        ctrl_ok: 'control ok', ctrl_bad: 'CONTROL BROKEN', lost: 'Lost the connection to Foreman — the board is not updating. Server stopped?',
+        needs: 'Waiting for you', broken: 'What is broken', more: 'more', less: 'collapse', retry: 'Retry', close: 'Close',
+        cols: { todo: 'To do', doing: 'Doing', waiting: 'Waiting for you', parked: 'Parked', inbox: 'Inbox', accepted: 'Accepted', dropped: 'Dropped' },
+        act: { accept: 'Accept', doing: 'To work', comment: 'Answer', triage: 'File an item', skip: 'Not a task', rule_accept: 'Accept rule',
+               rule_drop: 'Reject', drop: 'Drop', up: '↑', down: '↓', send: 'Send' },
+        no_probes: 'no probes', comments: 'comm.', days: 'd', council: 'council', waits: 'waits', quote: 'Quote (verbatim)',
+        source: 'Source', next: 'Next step', probes: 'Probes', hist: 'History', priority: 'Priority', status: 'Status',
+        comment_ph: 'Comment (Ctrl+Enter to send)', yes: 'Yes', no: 'Cancel',
+        confirm_accept: 'Accept {id}? This is your word: it goes into the owner\'s log and Claude will see it.',
+        confirm_red: '{id} has red probes. Accept anyway? It will stay red in «What is broken».',
+        confirm_drop: 'Drop {id}? It goes to «Dropped» (never deleted, can come back).', accepted_by: 'accepted',
+        legacy: 'accepted before 2.1', void: 'acceptance void', state: { done: 'done', partly: 'partly', not: 'not', unchecked: 'unknown', 'no-probes': 'no probes' },
+        inbox_reg: 'inbox', empty: 'empty' }
+};
+const LANG = document.documentElement.lang === 'en' ? 'en' : 'ru';
+const t = T[LANG];
+const COLS = ['todo', 'doing', 'waiting', 'parked', 'inbox', 'accepted', 'dropped'];
+const RAILS = ['accepted', 'dropped'];
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+let TOKEN = '';
+try {
+  const u = new URL(location.href);
+  TOKEN = u.searchParams.get('t') || sessionStorage.getItem('foreman-board-t') || '';
+  if (u.searchParams.get('t')) { sessionStorage.setItem('foreman-board-t', TOKEN); history.replaceState(null, '', u.pathname); }
+} catch (e) { /* (sessionStorage blocked — the token stays in memory only) */ }
+const S = { data: null, version: '', reg: 'all', q: '', open: new Set(), needsAll: false, lastOk: Date.now(), panel: null, retry: null };
+
+async function api(path, body) {
+  const opt = { method: body ? 'POST' : 'GET', headers: { 'X-Foreman-Token': TOKEN } };
+  if (body) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+  const r = await fetch('/fm/api/' + path, opt);
+  let d = {};
+  try { d = await r.json(); } catch (e) { d = { ok: false, error: 'HTTP ' + r.status }; }
+  d.status = r.status;
+  return d;
+}
+
+function regLabel(name) {
+  if (name === 'rules') return LANG === 'ru' ? 'правило' : 'rule';
+  const r = (S.data && S.data.registries || []).find((x) => x.name === name);
+  return r ? r.label : name;
+}
+function prioClass(c) { return 'p' + Math.min(3, c.prio == null ? 2 : c.prio); }
+function visible(c) {
+  if (S.reg !== 'all' && c.reg !== S.reg) return false;
+  if (!S.q) return true;
+  return (c.id + ' ' + c.title + ' ' + (c.quote || '') + ' ' + (c.next || '')).toLowerCase().includes(S.q);
+}
+function sortCards(a, b) {
+  const ra = Number.isInteger(a.rank) ? a.rank : 1e6, rb = Number.isInteger(b.rank) ? b.rank : 1e6;
+  return ra - rb || a.prio - b.prio || String(a.date).localeCompare(String(b.date)) || String(a.id).localeCompare(String(b.id), undefined, { numeric: true });
+}
+
+function cardHtml(c) {
+  const sq = (c.probes || []).slice(0, 14).map((p) => `<i class="sq ${p[1] === true ? 't' : p[1] === false ? 'f' : ''}"></i>`).join('');
+  const n = (c.probes || []).length, good = (c.probes || []).filter((p) => p[1] === true).length;
+  const probes = n ? `<span class="probes" title="${esc(t.state[c.check] || c.check)}">${sq}</span><span class="chk-${esc(c.check)}">${good}/${n}</span>`
+                   : `<span class="chk-no-probes">${t.no_probes}</span>`;
+  const meta = [probes, c.comments && c.comments.length ? `${t.comments} ${c.comments.length}` : '', c.days != null ? `${c.days} ${t.days}` : '',
+                c.council ? `${t.council} ${esc(c.council)}` : '', ...(c.tags || []).map((x) => `<span class="tag">${esc(x)}</span>`)].filter(Boolean).join('');
+  return `<div class="top"><span class="reg">${esc(regLabel(c.reg))}</span><span class="pid">${esc(c.id)}</span>` +
+    (c.priority ? `<span class="prio ${prioClass(c)}">${esc(c.priority)}</span>` : '') + `</div>` +
+    `<div class="title">${esc(c.title)}</div><div class="meta">${meta}</div>` +
+    (c.col === 'waiting' && (c.waits || c.next) ? `<div class="waits">${t.waits}: ${esc(c.waits || c.next)}</div>` : '');
+}
+
+function render() {
+  const d = S.data;
+  if (!d) return;
+  document.title = t.title;
+  $('h-title').textContent = t.title;
+  $('when').textContent = `${t.updated} ${d.when} · ${d.control_ok ? t.ctrl_ok : t.ctrl_bad}`;
+  const regs = $('regs');
+  regs.innerHTML = '';
+  if (d.registries.length > 1) {
+    [{ name: 'all', label: t.all }, ...d.registries].forEach((r) => {
+      const b = document.createElement('button');
+      b.textContent = r.label;
+      b.className = S.reg === r.name ? 'on' : '';
+      b.addEventListener('click', () => { S.reg = r.name; render(); });
+      regs.appendChild(b);
+    });
+  }
+  // the strip «Ждут вас»: ONE honest list, its length = the number in its title
+  const needs = d.needs_you.filter((n) => S.reg === 'all' || n.reg === S.reg || n.reg === 'rules');
+  $('needs').classList.toggle('hidden', !needs.length);
+  $('needs-h').textContent = `${t.needs} (${needs.length})`;
+  const shown = S.needsAll ? needs : needs.slice(0, 5);   // (5 rows: the columns stay on the first screen)
+  $('needs-rows').innerHTML = shown.map((n, i) => `<div class="row needs-row" data-i="${i}"><div class="what"><b>${esc(regLabel(n.reg))} ${esc(n.id)}</b> ${esc(n.title)} — <span class="why">${esc(n.why)}</span></div>` +
+    `<div class="acts">${n.actions.map((a) => `<button class="small" data-act="${a}" data-i="${i}">${t.act[a] || a}</button>`).join('')}</div></div>`).join('') +
+    (needs.length > 5 ? `<button class="more" id="needs-more">${S.needsAll ? t.less : `${t.more} ${needs.length - 5}`}</button>` : '');
+  $('needs-rows').querySelectorAll('button[data-act]').forEach((b) => b.addEventListener('click', () => needAct(shown[+b.dataset.i], b.dataset.act)));
+  if ($('needs-more')) $('needs-more').addEventListener('click', () => { S.needsAll = !S.needsAll; render(); });
+  $('broken').classList.toggle('hidden', !d.broken.length);
+  $('broken-h').textContent = `${t.broken} (${d.broken.length})`;
+  $('broken-rows').innerHTML = d.broken.map((b) => `<div class="row"><div class="what">${esc(b.text)}</div></div>`).join('');
+  // the columns
+  const board = $('board');
+  board.className = 'board' + RAILS.filter((r) => S.open.has(r)).map((r) => ' open-' + r).join('');
+  board.innerHTML = '';
+  const inbox = d.needs_you.filter((n) => n.kind === 'inbox' && (S.reg === 'all' || n.reg === S.reg));
+  for (const col of COLS) {
+    const el = document.createElement('section');
+    const rail = RAILS.includes(col);
+    el.className = 'col' + (rail ? ' rail' + (S.open.has(col) ? ' open' : '') : '');
+    el.dataset.col = col;
+    const cards = col === 'inbox' ? [] : d.items.filter((c) => c.col === col && visible(c)).sort(sortCards);
+    const n = col === 'inbox' ? inbox.length : cards.length;
+    el.innerHTML = `<div class="head"><span class="name">${t.cols[col]}</span><span class="n">${n}</span></div><div class="cards"></div>`;
+    const box = el.querySelector('.cards');
+    if (col === 'inbox') {
+      inbox.forEach((i) => {
+        const c = document.createElement('div');
+        c.className = 'card';
+        c.innerHTML = `<div class="top"><span class="reg">${esc(regLabel(i.reg))}</span><span class="pid">${esc(i.id)}</span></div><div class="title">${esc(i.title)}</div>` +
+          `<div class="acts">${['triage', 'skip'].map((a) => `<button class="small" data-act="${a}">${t.act[a]}</button>`).join(' ')}</div>`;
+        c.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => needAct(i, b.dataset.act)));
+        box.appendChild(c);
+      });
+    } else {
+      cards.forEach((c) => box.appendChild(cardEl(c)));
+    }
+    if (!n) box.innerHTML = `<div class="dim">${t.empty}</div>`;
+    if (rail) el.querySelector('.head').addEventListener('click', () => { S.open.has(col) ? S.open.delete(col) : S.open.add(col); render(); });
+    if (col !== 'inbox') dropZone(el, col);
+    board.appendChild(el);
+  }
+  if (S.panel) renderPanel();
+}
+
+function cardEl(c) {
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.draggable = true;
+  el.dataset.key = c.key;
+  el.dataset.id = c.id;
+  el.dataset.reg = c.reg;
+  el.innerHTML = cardHtml(c);
+  el.title = (c.quote ? `«${c.quote}»` : '') + (c.next ? `\n→ ${c.next}` : '');
+  el.addEventListener('click', () => openPanel(c.reg, c.id));
+  el.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', c.key); e.dataTransfer.effectAllowed = 'move'; el.classList.add('dragging'); });
+  el.addEventListener('dragend', () => el.classList.remove('dragging'));
+  return el;
+}
+
+function dropZone(el, col) {
+  const box = el.querySelector('.cards');
+  const before = (y) => [...box.querySelectorAll('.card:not(.dragging)')].find((c) => y < c.getBoundingClientRect().top + c.offsetHeight / 2);
+  el.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    el.classList.add('drop-target');
+    box.querySelectorAll('.gap-before').forEach((x) => x.classList.remove('gap-before'));
+    const b = before(e.clientY);
+    if (b) b.classList.add('gap-before');
+  });
+  el.addEventListener('dragleave', (e) => { if (!el.contains(e.relatedTarget)) { el.classList.remove('drop-target'); box.querySelectorAll('.gap-before').forEach((x) => x.classList.remove('gap-before')); } });
+  el.addEventListener('drop', (e) => {
+    e.preventDefault();
+    el.classList.remove('drop-target');
+    const b = before(e.clientY);
+    box.querySelectorAll('.gap-before').forEach((x) => x.classList.remove('gap-before'));
+    const key = e.dataTransfer.getData('text/plain');
+    drop(key, col, b ? b.dataset.key : null);
+  });
+}
+
+// the one path of a drop — the mouse and the test hook window.__board.drop go through it
+async function drop(key, col, beforeKey) {
+  const c = S.data.items.find((x) => x.key === key);
+  if (!c) return;
+  if (col === 'accepted') { return accept(c); }
+  const order = S.data.items.filter((x) => x.col === col && x.reg === c.reg && x.key !== key).sort(sortCards).map((x) => x.id);
+  const bi = beforeKey ? order.indexOf(beforeKey.split(':').slice(1).join(':')) : -1;
+  order.splice(bi < 0 ? order.length : bi, 0, c.id);
+  let r;
+  if (c.col === col) r = await api('rank', { reg: c.reg, column: col, ids: order });
+  else if (col === 'dropped') { if (!(await ask(t.confirm_drop.replace('{id}', c.id)))) return render(); r = await api('move', { reg: c.reg, id: c.id, to: col, expect: { status: c.status }, order }); }
+  else r = await api('move', { reg: c.reg, id: c.id, to: col, expect: { status: c.status }, order });
+  after(r, () => drop(key, col, beforeKey));
+}
+
+async function accept(c, red) {
+  if (!red && !(await ask(t.confirm_accept.replace('{id}', c.id)))) return render();
+  const r = await api('accept', { reg: c.reg, id: c.id, confirm: true, red_ok: !!red, expect: { status: c.status } });
+  if (r.status === 409 && r.item && r.item.need === 'red_ok') {
+    if (await ask(t.confirm_red.replace('{id}', c.id))) return accept(c, true);
+    return render();
+  }
+  after(r, () => accept(c, red));
+}
+
+function after(r, retry) {
+  if (!r.ok) {
+    $('conflict-text').textContent = r.error || ('HTTP ' + r.status);
+    $('conflict').classList.add('show');
+    S.retry = r.status === 409 || r.status === 503 ? retry : null;
+    $('conflict-retry').classList.toggle('hidden', !S.retry);
+  } else {
+    $('conflict').classList.remove('show');
+  }
+  load(true);
+}
+
+async function needAct(n, act) {
+  const c = S.data.items.find((x) => x.reg === n.reg && x.id === n.id);
+  if (act === 'accept' && c) return accept(c);
+  if (act === 'doing' && c) return after(await api('move', { reg: c.reg, id: c.id, to: 'doing', expect: { status: c.status } }), () => needAct(n, act));
+  if (act === 'comment') return openPanel(n.reg, n.id, true);
+  if (act === 'triage') return after(await api('triage', { reg: n.reg, id: n.id }));
+  if (act === 'skip') return after(await api('skip', { reg: n.reg, id: n.id }));
+  if (act === 'rule_accept') { if (await ask(t.confirm_accept.replace('{id}', n.id))) after(await api('rule', { id: n.id, to: 'active' })); return; }
+  if (act === 'rule_drop') return after(await api('rule', { id: n.id, to: 'dropped' }));
+}
+
+function ask(text) {
+  return new Promise((res) => {
+    $('m-text').textContent = text;
+    $('m-yes').textContent = t.yes;
+    $('m-no').textContent = t.no;
+    $('modal').classList.add('show');
+    const done = (v) => { $('modal').classList.remove('show'); $('m-yes').onclick = $('m-no').onclick = null; res(v); };
+    $('m-yes').onclick = () => done(true);
+    $('m-no').onclick = () => done(false);
+    $('m-yes').focus();
+  });
+}
+
+async function openPanel(reg, id, focusComment) {
+  S.panel = { reg, id, focus: !!focusComment };
+  $('panel').classList.add('open');
+  $('panel').setAttribute('aria-hidden', 'false');
+  await renderPanel(true);
+}
+
+async function renderPanel(fetchIt) {
+  const p = S.panel;
+  if (!p) return;
+  if (fetchIt || !p.item || p.version !== S.version) {
+    const r = await api(`item?reg=${encodeURIComponent(p.reg)}&id=${encodeURIComponent(p.id)}`);
+    if (!r.ok) { $('p-body').innerHTML = `<p class="bad">${esc(r.error)}</p>`; return; }
+    p.item = r.item;
+    p.version = S.version;
+  }
+  const c = p.item, reg = (S.data.registries.find((x) => x.name === c.reg) || { priorities: [] });
+  $('p-title').textContent = `${regLabel(c.reg)} · ${c.id} — ${c.title}`;
+  const acc = c.accepted ? (c.accepted.legacy ? t.legacy : `${t.accepted_by}: ${c.accepted.ts || ''} «${c.accepted.quote || ''}»`) : '';
+  const probes = (c.probes || []).map((x) => `<li><span class="${x[1] === true ? 'ok' : x[1] === false ? 'bad' : 'unk'}">${x[1] === true ? '✓' : x[1] === false ? '✗' : '?'}</span> ` +
+    `${esc(x[0])}${x[1] == null && x[2] ? ` <span class="dim">(${esc(x[2])})</span>` : ''}</li>`).join('') || `<li class="dim">${t.no_probes}</li>`;
+  const comments = (c.comments || []).map((x) => `<li><span class="dim">${esc((x.ts || '').replace('T', ' '))} · ${esc(x.by)}</span><br>${esc(x.text)}</li>`).join('');
+  const hist = (c.history || []).map((e) => `<li><span class="dim">${esc((e.ts || '').replace('T', ' '))} · ${esc(e.by || '')}</span> ${esc(e.kind)}` +
+    `${e.from ? ' ' + esc(e.from) : ''}${e.to ? ' → ' + esc(e.to) : ''}${e.text ? ' «' + esc(e.text) + '»' : ''}</li>`).join('');
+  const prio = reg.priorities.length ? `<select id="p-prio">${reg.priorities.map((x) => `<option${x === c.priority ? ' selected' : ''}>${esc(x)}</option>`).join('')}</select>` : esc(c.priority);
+  $('p-body').innerHTML =
+    `<div><b>${t.status}:</b> ${esc(c.status)} · <b>${t.priority}:</b> ${prio} · <span class="chk-${esc(c.check)}">${esc(t.state[c.check] || c.check)}</span></div>` +
+    (acc ? `<div class="dim">${esc(acc)}</div>` : '') + (c.accept_void ? `<div class="bad">${t.void}: ${esc(c.accept_void)}</div>` : '') +
+    `<div class="acts">${c.col !== 'accepted' ? `<button class="primary" id="p-accept">${t.act.accept}</button>` : ''}` +
+    `${c.col !== 'doing' ? `<button id="p-doing">${t.act.doing}</button>` : ''}${c.col !== 'dropped' ? `<button id="p-drop">${t.act.drop}</button>` : ''}` +
+    `<button id="p-up" aria-label="up">${t.act.up}</button><button id="p-down" aria-label="down">${t.act.down}</button></div>` +
+    `<h3>${t.quote}</h3><div class="quote">«${esc(c.quote)}»</div>` +
+    (c.source ? `<h3>${t.source}</h3><div>${esc(c.source)}</div>` : '') + (c.next ? `<h3>${t.next}</h3><div>${esc(c.next)}</div>` : '') +
+    (c.waits ? `<h3>${t.waits}</h3><div>${esc(c.waits)}</div>` : '') +
+    `<h3>${t.probes}</h3><ul>${probes}</ul>` +
+    `<h3>${t.comments}</h3><ul>${comments}</ul><textarea id="p-text" placeholder="${esc(t.comment_ph)}"></textarea><div class="acts"><button class="primary" id="p-send">${t.act.send}</button></div>` +
+    (hist ? `<h3>${t.hist}</h3><ul>${hist}</ul>` : '');
+  const cur = S.data.items.find((x) => x.reg === c.reg && x.id === c.id) || c;
+  if ($('p-accept')) $('p-accept').addEventListener('click', () => accept(cur));
+  if ($('p-doing')) $('p-doing').addEventListener('click', async () => after(await api('move', { reg: c.reg, id: c.id, to: 'doing', expect: { status: cur.status } })));
+  if ($('p-drop')) $('p-drop').addEventListener('click', () => drop(cur.key, 'dropped', null));
+  const step = async (dir) => {
+    const order = S.data.items.filter((x) => x.col === cur.col && x.reg === cur.reg).sort(sortCards).map((x) => x.id);
+    const i = order.indexOf(cur.id), j = i + dir;
+    if (i < 0 || j < 0 || j >= order.length) return;
+    [order[i], order[j]] = [order[j], order[i]];
+    after(await api('rank', { reg: cur.reg, column: cur.col, ids: order }));
+  };
+  $('p-up').addEventListener('click', () => step(-1));
+  $('p-down').addEventListener('click', () => step(1));
+  if ($('p-prio')) $('p-prio').addEventListener('change', async (e) => after(await api('priority', { reg: c.reg, id: c.id, priority: e.target.value })));
+  const send = async () => {
+    const text = $('p-text').value.trim();
+    if (!text) return;
+    const r = await api('comment', { reg: c.reg, id: c.id, text });
+    if (r.ok) $('p-text').value = '';
+    after(r);
+    renderPanel(true);
+  };
+  $('p-send').addEventListener('click', send);
+  $('p-text').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.ctrlKey) send(); });
+  if (p.focus) { p.focus = false; $('p-text').focus(); }
+}
+
+function closePanel() { S.panel = null; $('panel').classList.remove('open'); $('panel').setAttribute('aria-hidden', 'true'); }
+
+async function load(force) {
+  try {
+    const r = await api('state' + (force || !S.version ? '' : `?since=${encodeURIComponent(S.version)}`));
+    S.lastOk = Date.now();
+    $('lost').classList.remove('show');
+    if (r.unchanged) return;
+    if (!r.ok) { $('lost').textContent = r.error || ('HTTP ' + r.status); $('lost').classList.add('show'); return; }
+    S.data = r;
+    S.version = r.version;
+    render();
+  } catch (e) {
+    if (Date.now() - S.lastOk > 15000) { $('lost').textContent = t.lost; $('lost').classList.add('show'); }
+  }
+}
+
+$('search').placeholder = t.search;
+$('search').addEventListener('input', (e) => { S.q = e.target.value.trim().toLowerCase(); render(); });
+$('recheck').textContent = t.recheck;
+$('recheck').addEventListener('click', async () => { await api('recheck', {}); load(true); });
+$('p-close').addEventListener('click', closePanel);
+$('conflict-retry').textContent = t.retry;
+$('conflict-close').textContent = t.close;
+$('conflict-retry').addEventListener('click', () => { $('conflict').classList.remove('show'); if (S.retry) S.retry(); });
+$('conflict-close').addEventListener('click', () => $('conflict').classList.remove('show'));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closePanel(); $('modal').classList.remove('show'); } });
+window.__board = { drop: (id, col, beforeId, reg) => {           // (the test hook: the same path as a mouse drop)
+  const c = S.data.items.find((x) => x.id === id && (!reg || x.reg === reg));
+  const b = beforeId ? S.data.items.find((x) => x.id === beforeId && x.reg === (c && c.reg)) : null;
+  return c ? drop(c.key, col, b ? b.key : null) : null;
+}, state: () => S.data, ask: (v) => { const y = $('m-yes'), n = $('m-no'); (v ? y : n).click(); } };
+if (!TOKEN) {
+  $('lost').textContent = LANG === 'ru' ? 'Откройте доску по ссылке, которую Прораб напечатал в вашем терминале (в ней ключ запуска).'
+                                        : 'Open the board by the link Foreman printed in your terminal (it carries the start key).';
+  $('lost').classList.add('show');
+} else {
+  load(true);
+  setInterval(() => load(false), {{POLL_MS}});
+}
+</script>
+</body>
+</html>

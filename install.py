@@ -221,7 +221,7 @@ def install(proj, lang, yes_all, modules=None):
     fdir = os.path.join(proj, '.foreman')
     os.makedirs(fdir, exist_ok=True)
     bdir = os.path.join(fdir, 'backup', stamp())
-    for n in ('foreman.py', 'recall.py', 'lexicon.json'):
+    for n in ('foreman.py', 'recall.py', 'board.py', 'board.html', 'lexicon.json'):
         if n != 'lexicon.json' or not os.path.exists(os.path.join(fdir, n)):     # (the owner's own words stay in his lexicon)
             put(os.path.join(KIT, 'foreman', n), os.path.join(fdir, n), bdir)
     cfg = read_json(os.path.join(fdir, 'config.json'), {})
