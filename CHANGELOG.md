@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.2.1 — 2026-11-04 · The review's last items
+
+- Panel: Ollama through its own `/api/chat` with `num_ctx` (32768 by default — its OpenAI-compatible address cannot set the context, a
+  long brief was cut silently); a CLI member's own flags (`args`); one deadline for the whole round; an answer written whole or not at
+  all; the installer asks about the panel once and remembers a «no» (`--ask-panel` to ask again); `panel.py` copied once.
+- The edit gate judges THIS project only: writing another project's `.foreman` (a test copy) — through a path, a shell variable or the
+  kit installer aimed elsewhere — is no longer «checks edited»; the same command aimed at this project still is. The panel's own commands
+  are the engine's.
+- A rule taken back from «dropped» is marked «REVIVED» in the ledger.
+- Tests: panel 30, v21 48.
+
 ## 2.2 — 2026-11-04 · Model panel (консилиум моделей)
 
 - **Model panel** (module `panel`, OFF by default — offered at install, the owner decides): one self-contained brief to several AI

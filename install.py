@@ -225,23 +225,24 @@ KIT_FILES = [('agent_foreman.md', 'agents/foreman.md', 'promises'), ('agent_judg
 def panel_offer(proj, fdir, cfg, yes_all, modules):
     """2.2 — the model panel is OFFERED, the owner decides: the members found here are shown and stored (so he can edit them), the
     question asked interactively; a silent install (--yes) leaves it off unless --modules names it"""
-    put(os.path.join(KIT, 'foreman', 'panel.py'), os.path.join(fdir, 'panel.py'), os.path.join(fdir, 'backup', stamp()))
     r = subprocess.run([sys.executable, os.path.join(fdir, 'foreman.py'), 'panel', 'detect', '--json'], capture_output=True, text=True,
                        encoding='utf-8', errors='replace', timeout=60)
     try:
         found = json.loads(r.stdout)
     except ValueError:
         found = []
-    keep = ('name', 'kind', 'label', 'enabled', 'cmd', 'stdin', 'strip_env', 'base_url', 'key_env', 'model', 'models', 'params', 'note')
+    keep = ('name', 'kind', 'label', 'enabled', 'cmd', 'stdin', 'strip_env', 'args', 'base_url', 'key_env', 'model', 'models', 'params',
+            'num_ctx', 'note')
     outside = [m for m in found if m.get('kind') != 'subagent']
     said_yes = modules is not None and 'panel' in modules  # (the owner named it — or answers «yes» below; otherwise nothing is switched on)
-    if modules is None and not cfg['modules'].get('panel') and not yes_all:
+    if modules is None and not cfg['modules'].get('panel') and not yes_all and (not cfg['panel'].get('offered') or '--ask-panel' in sys.argv):
         out(L['panel_found'])
         for m in found:
             out(f"  • {m.get('label', m['name'])} — {m.get('how', '')}" + (f" ({m['note']})" if m.get('note') else ''))
         if not outside:
             out(L['panel_none'])
         said_yes = cfg['modules']['panel'] = ask(L['panel_ask'], False)
+        cfg['panel']['offered'] = dt.date.today().isoformat()   # (asked once; an update does not ask again — `--ask-panel` does)
     known = {m.get('name') for m in (cfg['panel'].get('members') or []) if isinstance(m, dict)}
     for m in outside:                                     # (a member found NOW is on only if the owner said yes now — review M2)
         if m['name'] not in known:

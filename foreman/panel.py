@@ -265,7 +265,7 @@ def detect(probe_local=True):
             if models:
                 found.append({'name': name, 'kind': 'api', 'label': f'{name} (local)', 'how': base, 'base_url': base, 'key_env': '',
                               'model': models[0], 'models': models[:12], 'ready': True, 'found': True,
-                              **({'note': tx('ollama_ctx')} if name == 'ollama' else {})})
+                              **({'num_ctx': 32768} if name == 'ollama' else {})})
     out, names = [], set()
     for f in found:
         m = dict(f, **have[f['name']]) if f['name'] in have else dict(f, enabled=f.get('enabled', False))
@@ -400,7 +400,8 @@ def members_for(a):
 def _why(log):
     """the reason a CLI gave, without its plumbing noise: a usage limit / a sign-in first, else its last «ERROR» lines"""
     lines = [l.strip() for l in str(log).splitlines() if l.strip()]
-    for key, say in (('usage limit', 'limit'), ('quota', 'limit'), ('not logged in', 'login'), ('please log in', 'login')):
+    for key, say in (('usage limit', 'limit'), ('quota', 'limit'), ('not logged in', 'login'), ('please log in', 'login'),
+                     ('sign in', 'login'), ('codex login', 'login')):
         hit = next((l for l in lines if key in l.lower()), None)
         if hit:
             return f'{tx(say)}: {hit[:300]}'
@@ -431,6 +432,8 @@ def ask_cli(m, prompt, folder, timeout):
         if isinstance(cmd, str):                            # (a command written as one string in config.json — review S8)
             cmd = [x.strip('"') for x in shlex.split(cmd, posix=os.name != 'nt')]   # (Windows keeps the quotes inside a token)
         cmd = [str(x).replace('{out}', out).replace('{dir}', sandbox) for x in cmd]
+        extra = [str(x) for x in m.get('args') or []]      # (the member's own flags: a model, an effort — «each at its strongest», S5)
+        cmd = cmd[:-1] + extra + cmd[-1:] if extra and cmd[-1] == '-' else cmd + extra
         exe = _which(cmd[0]) or cmd[0]
         strip = set(m.get('strip_env') or [])
         env = {k: v for k, v in os.environ.items() if k not in strip}
@@ -455,7 +458,26 @@ def ask_cli(m, prompt, folder, timeout):
         shutil.rmtree(sandbox, ignore_errors=True)
 
 
+def ask_ollama(m, prompt, timeout):
+    """Ollama's own /api/chat with options.num_ctx: through its OpenAI-compatible address the context size cannot be set, and a long
+    brief is cut without a word (review S6). num_ctx: the member's own, else 32768"""
+    base = m['base_url'].rstrip('/')
+    base = base[:-3] if base.endswith('/v1') else base
+    body = {'model': m['model'], 'messages': [{'role': 'user', 'content': prompt}], 'stream': False,
+            'options': {'num_ctx': int(m.get('num_ctx') or 32768), **(m.get('params') or {})}}
+    req = urllib.request.Request(base + '/api/chat', data=json.dumps(body).encode('utf-8'), method='POST',
+                                 headers={'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            d = json.loads(r.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f'HTTP {e.code}: {e.read().decode("utf-8", "replace")[:400]}')
+    return str((d.get('message') or {}).get('content') or '').strip(), d.get('model') or m['model']
+
+
 def ask_api(m, prompt, timeout):
+    if m.get('name') == 'ollama' or m.get('native') == 'ollama':
+        return ask_ollama(m, prompt, timeout)
     key = os.environ.get(m.get('key_env') or '', '') if m.get('key_env') else ''
     if m.get('key_env') and not key:
         raise RuntimeError(f"no variable {m['key_env']}")
@@ -485,10 +507,12 @@ def _ask_all(members, make_prompt, folder, prefix):
             text, model = ask_cli(m, prompt, folder, timeout) if m['kind'] == 'cli' else ask_api(m, prompt, timeout)
             if not text:
                 raise RuntimeError(tx('empty'))
-            settings = '; '.join(f'{k}={v}' for k, v in (m.get('params') or {}).items())
+            settings = '; '.join([f'{k}={v}' for k, v in (m.get('params') or {}).items()] + [' '.join(map(str, m.get('args') or []))]).strip('; ')
             head = (f"<!-- panel: member={m['name']}; kind={m['kind']}; model={model}; settings={settings or '-'}; "
                     f"seconds={time.time() - t0:.0f}; ts={dt.datetime.now().isoformat(timespec='seconds')} -->\n# {m['name']} ({model})\n\n")
-            io.open(os.path.join(folder, f"{prefix}_{m['name']}.md"), 'w', encoding='utf-8', newline='\n').write(head + text + '\n')
+            dst = os.path.join(folder, f"{prefix}_{m['name']}.md")      # (whole or nothing: a temp file, then a replace — N5)
+            io.open(dst + '.tmp', 'w', encoding='utf-8', newline='\n').write(head + text + '\n')
+            os.replace(dst + '.tmp', dst)
             results[m['name']] = ('ok', f'{time.time() - t0:.0f} s')
         except Exception as e:                              # (one member down never stops the others)
             write_err(m, str(e))
@@ -496,8 +520,9 @@ def _ask_all(members, make_prompt, folder, prefix):
     threads = [threading.Thread(target=one, args=(m,), daemon=True) for m in members]
     for t in threads:
         t.start()
+    deadline = time.time() + timeout + 60
     for t in threads:
-        t.join(timeout + 60)
+        t.join(max(0.0, deadline - time.time()))
     for m in members:                                       # (a member still hanging after the wait: its error file is written — M3)
         if m['name'] not in results:
             write_err(m, tx('timeout'))

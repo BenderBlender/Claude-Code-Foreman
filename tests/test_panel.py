@@ -80,7 +80,10 @@ class FakeAPI(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers.get('Content-Length') or 0)).decode('utf-8'))
         FakeAPI.seen.append({'auth': self.headers.get('Authorization'), 'path': self.path, 'body': body})
-        out = json.dumps({'model': body.get('model'), 'choices': [{'message': {'role': 'assistant', 'content': 'API ANSWER: ок'}}]}).encode()
+        if self.path.endswith('/api/chat'):                 # (Ollama's own address)
+            out = json.dumps({'model': body.get('model'), 'message': {'role': 'assistant', 'content': 'OLLAMA ANSWER: ок'}}).encode()
+        else:
+            out = json.dumps({'model': body.get('model'), 'choices': [{'message': {'role': 'assistant', 'content': 'API ANSWER: ок'}}]}).encode()
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(out)))
@@ -140,6 +143,9 @@ try:
         {'name': 'strip', 'kind': 'cli', 'cmd': [PY, FAKE, '--env', 'FAKE_STRIP_ME'], 'stdin': True, 'enabled': True, 'strip_env': ['FAKE_STRIP_ME']},
         {'name': 'slow', 'kind': 'cli', 'cmd': [slow], 'stdin': True, 'enabled': True},
         {'name': 'off', 'kind': 'cli', 'cmd': [PY, FAKE], 'stdin': True, 'enabled': False},
+        {'name': 'withargs', 'kind': 'cli', 'cmd': [PY, FAKE], 'stdin': True, 'enabled': True, 'args': ['--env', 'FAKE_KEEP_ME']},
+        {'name': 'ollama', 'kind': 'api', 'base_url': f'http://127.0.0.1:{srv.server_address[1]}/v1', 'key_env': '', 'model': 'llama-test',
+         'enabled': True},
         {'name': 'fakeapi', 'kind': 'api', 'base_url': f'http://127.0.0.1:{srv.server_address[1]}/v1', 'key_env': 'FAKE_PANEL_KEY',
          'model': 'fake-1', 'enabled': True, 'params': {'temperature': 0.2}}]
     io.open(cfgp, 'w', encoding='utf-8').write(json.dumps(cfg, ensure_ascii=False))
@@ -184,6 +190,13 @@ try:
     pid = int(io.open(os.path.join(base, 'slow.pid')).read()) if os.path.exists(os.path.join(base, 'slow.pid')) else 0
     check('a hung member behind a shim → answer_slow.err.md, killed with its children, the run did not wait for it',
           'таймаут' in read('answer_slow.err.md') and pid and not alive(pid) and took < 40, [took, pid, read('answer_slow.err.md')])
+    code, out = fm(proj, 'panel', 'run', d, '--members', 'withargs,ollama', '--owner-ok', words, env=renv)
+    a_args, a_oll = read('answer_withargs.md'), read('answer_ollama.md')
+    check('a member\'s own flags (args) reach the program and the header', 'ENV FAKE_KEEP_ME: present' in a_args
+          and 'settings=--env FAKE_KEEP_ME' in a_args, [out, a_args[-200:]])
+    oll = [x for x in FakeAPI.seen if x['path'].endswith('/api/chat')]
+    check('Ollama through its own /api/chat with the context size (a long brief is not cut silently)', 'OLLAMA ANSWER' in a_oll
+          and oll and oll[-1]['body'].get('options', {}).get('num_ctx') == 32768, [out, oll[-1:]])
     ev = [json.loads(l) for l in io.open(os.path.join(proj, '.foreman', 'events.jsonl'), encoding='utf-8') if l.strip()]
     check('the sending is logged (to whom, the owner\'s words)', any(e.get('kind') == 'panel_run' and 'fakeapi' in e.get('to', '') for e in ev), ev[-2:])
 
@@ -205,6 +218,17 @@ try:
     key = json.load(io.open(os.path.join(d, 'review_key.json'), encoding='utf-8')) if os.path.exists(os.path.join(d, 'review_key.json')) else {}
     check('review: the answers go as A, B… without names or headers; the key in review_key.json', code == 0 and 'Ответ A' in asked
           and 'Ответ B' in asked and 'member=' not in asked and '# fake' not in asked and set(key.values()) >= {'fake', 'fakeapi'}, [out, asked[:300]])
+
+    pa = os.path.join(base, 'asked')
+    os.makedirs(pa)
+    q = 'Включить консилиум моделей'
+    r1 = subprocess.run([PY, os.path.join(KIT, 'install.py'), pa], input='д\nн\n', capture_output=True, encoding='utf-8',
+                        env={**os.environ, **penv, 'PYTHONIOENCODING': 'utf-8'})
+    r2 = subprocess.run([PY, os.path.join(KIT, 'install.py'), pa], input='д\n', capture_output=True, encoding='utf-8',
+                        env={**os.environ, **penv, 'PYTHONIOENCODING': 'utf-8'})
+    ca = json.load(io.open(os.path.join(pa, '.foreman', 'config.json'), encoding='utf-8'))
+    check('the installer asks about the panel ONCE; a «no» is remembered (an update does not ask again)', q in r1.stdout and q not in r2.stdout
+          and ca['modules'].get('panel') is False and ca['panel'].get('offered'), [r1.stdout[-200:], r2.stdout[-200:]])
 
     r = subprocess.run([PY, os.path.join(KIT, 'install.py'), proj, '--uninstall', '--yes'], capture_output=True, encoding='utf-8')
     check('uninstall removes the kit\'s unchanged panel skill', not os.path.exists(os.path.join(proj, '.claude', 'skills', 'foreman-panel')), r.stdout[-200:])

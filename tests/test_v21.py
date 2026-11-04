@@ -268,6 +268,13 @@ try:
     check('another local server\'s /api/ → pass', o == {}, o)
     o = hook(proj, 'stop', {'transcript_path': turn(('Bash', {'command': 'git add -A && git commit -q -m "board: foreman.py board --token-file F"'}))})
     check('a commit message that only NAMES the board → pass', o == {}, o)
+    other = os.path.join(base, 'other_project')
+    o = hook(proj, 'stop', {'transcript_path': turn(('Write', {'file_path': os.path.join(other, '.foreman', 'rules.jsonl'), 'content': '{}'}),
+                                                    ('Bash', {'command': f'S="{other}"; cp a.json "$S/.foreman/promises.jsonl"'}),
+                                                    ('Bash', {'command': f'python install.py "{other}" --yes --modules lessons'}))})
+    check('edits of ANOTHER project\'s .foreman (a test copy) are not this project\'s checks → pass', o == {}, o)
+    o = hook(proj, 'stop', {'transcript_path': turn(('Bash', {'command': f'S="{proj}"; cp a.json "$S/.foreman/promises.jsonl"'}))})
+    check('…but the same command aimed at THIS project → block', o.get('decision') == 'block', o)
     o = hook(proj, 'stop', {'transcript_path': turn(('Bash', {'command': "python -c \"open('.foreman/promises.jsonl','w').write('')\""}))})
     check('a python one-liner writing promises.jsonl → block', o.get('decision') == 'block', o)
     tl = os.path.join(base, 'last.jsonl')

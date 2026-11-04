@@ -685,6 +685,33 @@ PY_WRITE = re.compile(r'open\([^)]*[\'"][wa]\+?[\'"]|write_text\(|\.write\(|json
 EDIT_OK = re.compile(r'(?:правка проверок|checks edited):\s*.{10,}', re.I)
 
 
+ASSIGN = re.compile(r'(?:^|[\s;&(])([A-Za-z_]\w*)=(?:"([^"]*)"|\'([^\']*)\'|([^\s;&]+))')
+
+
+def _expand(c):
+    """$NAME / ${NAME} from the command's own assignments (S="C:/x"; cp a "$S/.foreman/") and the environment"""
+    env = dict(os.environ)
+    for m in ASSIGN.finditer(c):
+        env[m.group(1)] = next(g for g in m.groups()[1:] if g is not None)
+    return re.sub(r'\$\{?([A-Za-z_]\w*)\}?', lambda m: env.get(m.group(1), m.group(0)), c)
+
+
+def _elsewhere(path):
+    """an absolute path outside this project (a test copy, another project) — not this project's checks"""
+    p = path.strip('"\'').replace('\\', '/')
+    if not re.match(r'^(?:[A-Za-z]:/|/)', p):
+        return False
+    root = os.path.normcase(os.path.abspath(ROOT)).replace('\\', '/').rstrip('/') + '/'
+    return not os.path.normcase(p).replace('\\', '/').startswith(root)
+
+
+def _token_before(c, i):
+    j = i
+    while j > 0 and c[j - 1] not in ' \t\n"\'=;&|(':
+        j -= 1
+    return c[j:i + 1]
+
+
 def edit_gate(transcript_path, last_msg=''):
     """→ a block reason or '': this TURN (since the last row a person or the app typed) wrote Foreman's own files, the hook settings
     or `lessons.guard_paths` directly, ran the installer / a forced edit / the board, or called the board's API — judged by the
@@ -709,13 +736,19 @@ def edit_gate(transcript_path, last_msg=''):
             name = b.get('name')
             if name in ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'):
                 f = str(inp.get('file_path') or inp.get('notebook_path') or '')
-                if EDIT_FILE.search(f) or any(g.search(f) for g in guard):
+                if (EDIT_FILE.search(f) or any(g.search(f) for g in guard)) and not _elsewhere(f):
                     what.append(os.path.basename(f))
             elif name in ('Bash', 'PowerShell'):
-                c = COMMIT_MSG.sub(' git commit ', str(inp.get('command') or ''))   # (a commit message that NAMES the board is no edit)
+                c = _expand(COMMIT_MSG.sub(' git commit ', str(inp.get('command') or '')))   # (a commit message NAMING the board is no edit)
                 plain = ENGINE_CALL.sub(' ', c)              # (the engine's own commands write through its checks — not an edit)
-                names = EDIT_FILE.search(plain) or any(g.search(plain) for g in guard)
-                if EDIT_SHELL.search(c) or (names and (WRITE_CMD.search(plain) or PY_WRITE.search(plain))):
+                hits = [h for rx in [EDIT_FILE] + guard for h in rx.finditer(plain)]
+                names = any(not _elsewhere(_token_before(plain, h.start())) for h in hits)
+                shell = EDIT_SHELL.search(c)
+                if shell and 'install' in shell.group(0).lower():   # (the kit's installer run on a test copy elsewhere)
+                    target = re.search(r'install\.py["\']?\s+["\']?([^"\'\s]+)', c)
+                    if target and _elsewhere(target.group(1)):
+                        shell = None
+                if shell or (names and (WRITE_CMD.search(plain) or PY_WRITE.search(plain))):
                     what.append(c.strip().splitlines()[0][:60])
     if not what or EDIT_OK.search(f'{last_msg}\n{last_text}'):
         return ''
@@ -802,9 +835,12 @@ def rule_cmd(a, probe_kinds=('file', 'grep', 'nogrep', 'doc', 'fresh'), quote_ch
         if not ok:
             print(ts); return 1
         for it in its:
+            it['_was'] = it.get('status')
             it.update(status='active', confirmed=today(), touched=today(),
                       accepted={'ts': dt.datetime.now().isoformat(timespec='seconds'), 'by': 'owner-quote', 'quote': quote, 'msg_ts': ts})
-            ledger_add(f"kept -> {it['id']} accepted by the owner («{quote[:60]}») -> {it.get('when', '')[:80]}")
+            ledger_add(f"kept -> {it['id']} accepted by the owner («{quote[:60]}»)" + (' — REVIVED from dropped' if it.get('_was') == 'dropped' else '')
+                       + f" -> {it.get('when', '')[:80]}")
+            it.pop('_was', None)
         write_jsonl(RULES, rows)
         print(' '.join(json.dumps(it, ensure_ascii=False) for it in its))
         return 0
