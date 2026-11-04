@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Foreman (Прораб) installer — puts Foreman into ANY Claude Code project.
 
-  python install.py [PROJECT_DIR] [--lang ru|en] [--yes]          install (or update — your registry is kept)
+  python install.py [PROJECT_DIR] [--lang ru|en] [--modules promises,lessons] [--yes]   install (or update — your data is kept)
+                                                                  --modules: promises (the asks), lessons (the rules, 2.0); both by default
   python install.py [PROJECT_DIR] --uninstall [--purge] [--yes]   remove the hooks, the agent and the CLAUDE.md section;
                                                                   --purge also moves .foreman/ aside (.foreman_removed_<time>), never deletes
 Windows: double-click install.bat (or drag the project folder onto it). macOS / Linux: ./install.sh
@@ -109,7 +110,7 @@ def hooks_block(proj):
     py = sys.executable.replace('\\', '/')
     fm = os.path.join(proj, '.foreman', 'foreman.py').replace('\\', '/')
     cmd = lambda mode: f'"{py}" "{fm}" hook {mode}'           # noqa: E731
-    return {'UserPromptSubmit': [{'hooks': [{'type': 'command', 'command': cmd('inbox'), 'timeout': 10}]}],
+    return {'UserPromptSubmit': [{'hooks': [{'type': 'command', 'command': cmd('prompt'), 'timeout': 10}]}],
             'Stop': [{'hooks': [{'type': 'command', 'command': cmd('stop'), 'timeout': 10}]}],
             'SessionStart': [{'matcher': 'startup|resume|compact', 'hooks': [{'type': 'command', 'command': cmd('session'), 'timeout': 30}]}]}
 
@@ -149,25 +150,46 @@ def claude_section(proj, lang, remove=False):
         io.open(p, 'w', encoding='utf-8', newline='\n').write(s)
 
 
-def install(proj, lang, yes_all):
+def put(src, dst, bdir):
+    """copy a kit file over a project file; the old one, if different, goes to .foreman/backup/<stamp>/ first (2.0)"""
+    if os.path.exists(dst) and io.open(dst, 'rb').read() != io.open(src, 'rb').read():
+        os.makedirs(bdir, exist_ok=True)
+        shutil.copy2(dst, os.path.join(bdir, os.path.basename(os.path.dirname(dst)) + '__' + os.path.basename(dst)))
+    shutil.copy2(src, dst)
+
+
+def install(proj, lang, yes_all, modules=None):
     if not ask(L['confirm'].format(p=proj), yes_all):
         out(L['cancel']); return 1
     fdir = os.path.join(proj, '.foreman')
     os.makedirs(fdir, exist_ok=True)
-    shutil.copy2(os.path.join(KIT, 'foreman', 'foreman.py'), os.path.join(fdir, 'foreman.py'))
+    bdir = os.path.join(fdir, 'backup', stamp())
+    for n in ('foreman.py', 'recall.py', 'lexicon.json'):
+        if n != 'lexicon.json' or not os.path.exists(os.path.join(fdir, n)):     # (the owner's own words stay in his lexicon)
+            put(os.path.join(KIT, 'foreman', n), os.path.join(fdir, n), bdir)
     cfg = read_json(os.path.join(fdir, 'config.json'), {})
     cfg = {'lang': lang, 'stale_days': 3, 'allow_cmd': False, 'orphans': {'candidates': [], 'corpus': []}, 'extra_ask_cues': [], **cfg, 'lang': lang}
     cfg['council'] = {'candidates': 2, 'max_rounds': 3, 'stop_after': 2, **(cfg.get('council') or {})}
+    cfg['modules'] = {'promises': True, 'lessons': True, 'board': False, **(cfg.get('modules') or {})}
+    if modules is not None:
+        cfg['modules'] = {m: m in modules for m in ('promises', 'lessons', 'board')}
+    cfg['budget'] = {'prompt_chars': 1200, 'session_chars': 2000, 'recall_hits': 3, 'recall_chars': 700, 'hot_rows': 5, **(cfg.get('budget') or {})}
+    cfg['lessons'] = {'stop_gate': 'correction', 'extra_correction_cues': [], 'extra_teaching_cues': [], 'rules_extra': [],
+                      'memory_dir': 'auto', 'index_skills': True, **(cfg.get('lessons') or {})}
     write_json(os.path.join(fdir, 'config.json'), cfg)
-    for n in ('promises.jsonl', 'inbox.jsonl'):
+    for n in ('promises.jsonl', 'inbox.jsonl', 'rules.jsonl', 'eval.jsonl', 'events.jsonl'):
         io.open(os.path.join(fdir, n), 'a', encoding='utf-8').close()
+    if not os.path.exists(os.path.join(fdir, 'ledger.md')):
+        io.open(os.path.join(fdir, 'ledger.md'), 'w', encoding='utf-8').write('# Ledger — kept | revised | dropped -> what -> evidence\n\n')
     agents = os.path.join(proj, '.claude', 'agents')
     os.makedirs(agents, exist_ok=True)
-    shutil.copy2(os.path.join(KIT, 'foreman', 'agent_foreman.md'), os.path.join(agents, 'foreman.md'))
-    shutil.copy2(os.path.join(KIT, 'foreman', 'agent_judge.md'), os.path.join(agents, 'foreman-judge.md'))
+    put(os.path.join(KIT, 'foreman', 'agent_foreman.md'), os.path.join(agents, 'foreman.md'), bdir)
+    put(os.path.join(KIT, 'foreman', 'agent_judge.md'), os.path.join(agents, 'foreman-judge.md'), bdir)
     skill = os.path.join(proj, '.claude', 'skills', 'foreman-council')
     os.makedirs(skill, exist_ok=True)
-    shutil.copy2(os.path.join(KIT, 'foreman', 'skill_council.md'), os.path.join(skill, 'SKILL.md'))
+    put(os.path.join(KIT, 'foreman', 'skill_council.md'), os.path.join(skill, 'SKILL.md'), bdir)
+    if os.path.isdir(bdir):
+        out(L['backup'].format(p=bdir))
     sp = os.path.join(proj, '.claude', 'settings.local.json')
     if os.path.exists(sp):
         try:                                                # (review 04.11: an unreadable file was silently replaced)
@@ -240,7 +262,7 @@ def main(argv):
     out(SPLASH)
     if sys.version_info < (3, 8):
         out(L['py'].format(v=sys.version.split()[0])); return 1
-    pos = [a for i, a in enumerate(argv) if not a.startswith('--') and (i == 0 or argv[i - 1] != '--lang')]
+    pos = [a for i, a in enumerate(argv) if not a.startswith('--') and (i == 0 or argv[i - 1] not in ('--lang', '--modules'))]
     proj = pos[0] if pos else ''
     if not proj:
         try:
@@ -252,7 +274,10 @@ def main(argv):
         out(L['no_dir'].format(p=proj)); return 1
     if '--uninstall' in argv:
         return uninstall(proj, '--purge' in argv, '--yes' in argv)
-    return install(proj, lang, '--yes' in argv)
+    mods = None
+    if '--modules' in argv and argv.index('--modules') + 1 < len(argv):
+        mods = {m.strip() for m in argv[argv.index('--modules') + 1].split(',') if m.strip()}
+    return install(proj, lang, '--yes' in argv, mods)
 
 
 L = TXT['ru']

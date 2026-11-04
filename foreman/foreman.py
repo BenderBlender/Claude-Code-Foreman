@@ -22,14 +22,18 @@ CONTROL: fake probes are run every time and MUST fail — a passing control mean
   python .foreman/foreman.py add '{"title": …, "quote": …, "probes": […]}'      → the next id
   python .foreman/foreman.py set P-003 status=parked next="…"                 (PARKING before a new ask mid-work)
   python .foreman/foreman.py take I-0002 --as P-007   |   skip I-0002 --why "a question, not a task"
-  python .foreman/foreman.py hook inbox|stop|session        (Claude Code hooks; JSON on stdin, JSON on stdout)
+  python .foreman/foreman.py hook prompt|stop|session       (Claude Code hooks; JSON on stdin, JSON on stdout; «inbox» = old name of «prompt»)
+  python .foreman/foreman.py comment P-003 "text"                              a comment on an item (the board shows them)
+LESSONS (2.0, module «lessons», recall.py) — the owner's corrections become RULES, found again before the next action:
+  python .foreman/foreman.py recall <words> · rule add|accept|set|drop|list · recall --eval · ledger "…" · lesson "…" · cues --stats
 COUNCIL — for hard items, a search with a kept leader (procedure: .claude/skills/foreman-council/SKILL.md):
   python .foreman/foreman.py check P-007 [--root ../cand-a]             the item's probes on any folder (e.g. a git worktree)
   python .foreman/foreman.py compare P-007 L=. A=../cand-a B=../cand-b  the same probes on every candidate, side by side
   python .foreman/foreman.py round P-007 '{"tried": ["L","A","B"], "winner": "A", "accepted": true, "why": "…"}'
   After the first logged round the item's probes and rubric are FROZEN (set refuses them without --force): the criteria are
   fixed before the search and never tailored to a candidate. «round» says when to stop: the BEST verified version wins, not the last.
-Standard library only, Python 3.8+. Made by Claude (Anthropic) with a film producer, 2026-11-01 — see README.md."""
+Standard library only, Python 3.8+. Made by Claude (Anthropic) with a film producer, 2026-11-01 (2.0 — 2026-11-04) — see README.md."""
+import contextlib
 import datetime as dt
 import glob
 import io
@@ -38,8 +42,10 @@ import os
 import re
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
+import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, os.pardir))
@@ -85,6 +91,8 @@ T = {
            'cmp_best': 'Больше всего зелёных проб: {labels}', 'cmp_ctrl': 'контроль СЛОМАН — этой проверке не верить',
            'no_root': 'нет такой папки:',
            'cmp_none': 'Ни один кандидат не прошёл ни одной пробы.',
+           'blocked': 'ждёт {ids}', 'events': 'ПРОРАБ·доска (владелец): {list}', 'commented': 'комментарий записан: {id}',
+           'lessons_line': 'Уроки: правил {n} · ждут вашего «да» {p} · горячих {h} · стражей красных {g}',
            'cmp_nc': 'не сравнимо на кандидатах (сервер лидера или абсолютный путь): {probes}',
            'need_eq': 'кандидаты пишутся как МЕТКА=ПАПКА (L=. A=../проект-a); без «=»: {args}',
            'bad_round': 'раунд — JSON-объект: "tried": [метки] и "accepted": true/false (при true — ещё "winner"); можно @файл.json',
@@ -118,6 +126,8 @@ T = {
            'cmp_best': 'Most green probes: {labels}', 'cmp_ctrl': 'control BROKEN — do not trust this check',
            'no_root': 'no such folder:',
            'cmp_none': 'No candidate passes any probe.',
+           'blocked': 'waits for {ids}', 'events': 'FOREMAN·board (owner): {list}', 'commented': 'comment saved: {id}',
+           'lessons_line': 'Lessons: {n} rules · waiting for your «yes» {p} · hot {h} · red guards {g}',
            'cmp_nc': 'not comparable on candidates (the leader\'s server or an absolute path): {probes}',
            'need_eq': 'candidates are LABEL=FOLDER (L=. A=../project-a); without «=»: {args}',
            'bad_round': 'a round is a JSON object: "tried": [labels] and "accepted": true/false (with true also "winner"); @file.json works',
@@ -135,6 +145,9 @@ def config():
     except (OSError, ValueError):
         pass
     c['council'] = {**council, **(c.get('council') or {})}
+    # (2.0: modules switch whole parts on/off — an «off» module adds nothing to any hook; budgets are hard caps in characters)
+    c['modules'] = {'promises': True, 'lessons': True, 'board': False, **(c.get('modules') or {})}
+    c['budget'] = {'prompt_chars': 1200, 'session_chars': 2000, 'recall_hits': 3, 'recall_chars': 700, 'hot_rows': 5, **(c.get('budget') or {})}
     return c
 
 
@@ -161,11 +174,58 @@ def jsonl(p):
 
 
 def write_jsonl(p, rows):
-    tmp = p + '.tmp'
+    tmp = f'{p}.{os.getpid()}.{uuid.uuid4().hex[:6]}.tmp'      # (a unique temp name: two writers never share one — council 04.11)
     with io.open(tmp, 'w', encoding='utf-8', newline='\n') as f:
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + '\n')
     os.replace(tmp, p)
+
+
+@contextlib.contextmanager
+def locked(wait=2.0):
+    """one writer at a time — the CLI, the hooks, the board (2.1): .foreman/.lock; a lock older than 30 s is stale. After `wait`
+    seconds it goes on rather than hang a hook, and it never removes a lock it does not hold"""
+    p, t0, held = os.path.join(HERE, '.lock'), time.time(), False
+    while True:
+        try:
+            fd = os.open(p, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode()); os.close(fd); held = True
+            break
+        except FileExistsError:
+            try:
+                if time.time() - os.path.getmtime(p) > 30:
+                    os.remove(p); continue
+            except OSError:
+                pass
+            if time.time() - t0 > wait:
+                break
+            time.sleep(0.05)
+        except OSError:
+            break
+    try:
+        yield held
+    finally:
+        if held:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+
+_lessons = None
+
+
+def lessons():
+    """the lessons module (recall.py), or None when it is off or not installed"""
+    global _lessons
+    if _lessons is None:
+        _lessons = False
+        if CFG['modules'].get('lessons') and os.path.exists(os.path.join(HERE, 'recall.py')):
+            sys.path.insert(0, HERE)
+            import recall
+            recall.setup(CFG, CFG.get('lang', 'ru'))
+            _lessons = recall
+    return _lessons or None
 
 
 def today():
@@ -321,7 +381,14 @@ def run():
 
 
 def key(it):
-    return (PRIO.get(it.get('priority'), 1), it.get('date') or '', it.get('id'))
+    rank = it.get('rank')
+    return (rank if isinstance(rank, int) else 10 ** 6, PRIO.get(it.get('priority'), 1), it.get('date') or '', it.get('id'))
+
+
+def blockers(it, reg):
+    ids = it.get('blocked_by') or []
+    ids = [ids] if isinstance(ids, str) else ids
+    return [b for b in ids if any(x.get('id') == b and x.get('status') in OPEN for x in reg)]
 
 
 def summary(r):
@@ -329,7 +396,7 @@ def summary(r):
     return dict(live=live, cnt=lambda s: sum(i['_check'] == s for i in live),
                 doing=sorted([i for i in live if i.get('status') == 'doing'], key=key),
                 waiting=sorted([i for i in live if i.get('status') == 'waiting'], key=key),
-                nxt=sorted([i for i in live if i.get('status') in ('todo', 'parked') and i['_check'] != 'done'], key=key),
+                nxt=sorted([i for i in live if i.get('status') in ('todo', 'parked') and i['_check'] != 'done' and not blockers(i, live)], key=key),
                 red=[i for i in live if i.get('status') == 'accepted' and i['_check'] in ('not', 'partly')],
                 built=[i for i in live if i.get('status') in ('todo', 'doing') and i['_check'] == 'done'],
                 stale=[i for i in live if i.get('status') == 'doing' and (age(i) or 0) > CFG.get('stale_days', 3)],
@@ -367,6 +434,7 @@ def brief(r):
     return '\n'.join(out[:15])
 
 
+
 def status_md(r):
     s = summary(r)
     lines = [L['status_title'].format(when=r['when']), '',
@@ -400,38 +468,115 @@ def _emit(o):
     sys.stdout.write(json.dumps(o, ensure_ascii=False))
 
 
-def hook_inbox(inp):
+EVENTS = os.path.join(HERE, 'events.jsonl')
+
+
+def owner_events():
+    """the owner's unseen moves on the board (2.1) → one line, ≤ 300 chars; marked seen"""
+    rows = jsonl(EVENTS)
+    new = [e for e in rows if e.get('by') == 'owner' and not e.get('seen')]
+    if not new:
+        return ''
+    for e in new:
+        e['seen'] = True
+    write_jsonl(EVENTS, rows)
+    items = [f"{e.get('id')} {e.get('kind')}" + (f" → {e['to']}" if e.get('to') else '') + (f" «{e['text'][:60]}»" if e.get('text') else '')
+             for e in new]
+    return L['events'].format(list='; '.join(items))[:300]
+
+
+def fit(parts, budget):
+    """the sections in priority order; the last ones are cut first; the whole ≤ budget characters"""
+    out = []
+    for p in parts:
+        if not p:
+            continue
+        room = budget - sum(len(x) + 1 for x in out)
+        if room < 80:
+            break
+        out.append(p if len(p) <= room else p[:room - 1] + '…')
+    return '\n'.join(out)
+
+
+def hook_prompt(inp):
+    """UserPromptSubmit: an ask → the inbox; a correction → the lesson protocol; the rules that fit the message; the owner's board
+    moves. An ordinary message costs 0 characters (dsh-superagent: take as little attention as possible)"""
     prompt = re.sub(r'<system-reminder[^>]*>[\s\S]*?</system-reminder[^>]*>', '', str(inp.get('prompt') or '')).strip()
     if not prompt or AGENT_NOTE.match(prompt) or '[Subagent hand-back]' in prompt[:400] or SHORT.match(prompt) or len(prompt) < 12:
         return
-    p = prompt.lower()
-    cues = ASK['ru'] + ASK['en'] + list(CFG.get('extra_ask_cues') or [])
-    if not any(re.search(c, p) for c in cues):
-        return
-    rows = jsonl(INBOX)
-    iid = 'I-' + str(len(rows) + 1).zfill(4)
-    rows.append({'id': iid, 'ts': dt.datetime.now().isoformat(timespec='seconds'), 'text': prompt[:800], 'state': 'new'})
-    write_jsonl(INBOX, rows)
-    _emit({'hookSpecificOutput': {'hookEventName': 'UserPromptSubmit', 'additionalContext': L['hook_inbox'].format(id=iid)}})
+    events = owner_events() if CFG['modules'].get('board') else ''
+    note = ''
+    if CFG['modules'].get('promises'):
+        p = prompt.lower()
+        cues = ASK['ru'] + ASK['en'] + list(CFG.get('extra_ask_cues') or [])
+        if any(re.search(c, p) for c in cues):
+            rows = jsonl(INBOX)
+            iid = 'I-' + str(len(rows) + 1).zfill(4)
+            # (the WHOLE ask: 1.1 cut it at 800 characters and the quote stopped being verbatim — council 04.11)
+            rows.append({'id': iid, 'ts': dt.datetime.now().isoformat(timespec='seconds'), 'text': prompt[:20000], 'state': 'new'})
+            write_jsonl(INBOX, rows)
+            note = L['hook_inbox'].format(id=iid)[:320]
+    reflect = pk = ''
+    R = lessons()
+    if R:
+        cls = R.classify(prompt)
+        R.log_cue(cls)
+        reflect = R.reflector(cls)[:450]
+        if len(cls['text']) >= 25:
+            pk = R.pack(cls['text'][:600])
+    text = fit([events, note, reflect, pk], CFG['budget']['prompt_chars'])
+    if text:
+        _emit({'hookSpecificOutput': {'hookEventName': 'UserPromptSubmit', 'additionalContext': text}})
+
+
+hook_inbox = hook_prompt                                    # (1.1 settings call «hook inbox» — still works)
 
 
 def hook_stop(inp):
+    """Stop: ONE block at most — the untriaged asks, a correction that left no record, a guard that just turned red"""
     if inp.get('stop_hook_active'):
         return
-    rows = jsonl(INBOX)
-    fresh = [r for r in rows if r.get('state', 'new') == 'new' and not r.get('reminded')]
-    if not fresh:
-        return
-    for r in fresh:
-        r['reminded'] = dt.datetime.now().isoformat(timespec='seconds')
-    write_jsonl(INBOX, rows)
-    _emit({'decision': 'block', 'reason': L['hook_stop'].format(list='; '.join(f"{r['id']}: «{r['text'][:120]}»" for r in fresh))})
+    reasons = []
+    if CFG['modules'].get('promises'):
+        rows = jsonl(INBOX)
+        fresh = [r for r in rows if r.get('state', 'new') == 'new' and not r.get('reminded')]
+        if fresh:
+            for r in fresh:
+                r['reminded'] = dt.datetime.now().isoformat(timespec='seconds')
+            write_jsonl(INBOX, rows)
+            reasons.append(L['hook_stop'].format(list='; '.join(f"{r['id']}: «{r['text'][:120]}»" for r in fresh)))
+    R = lessons()
+    if R:
+        reasons.append(R.lesson_gate(inp.get('transcript_path')))
+        newly, _ = R.guards(probe)
+        reasons.append(R.guard_reason(newly))
+    text = fit(reasons, 1200)
+    if text:
+        _emit({'decision': 'block', 'reason': text})
+
+
+def lessons_lines():
+    R = lessons()
+    if not R:
+        return []
+    rules = [r for r in R.jsonl(R.RULES) if r.get('status') != 'dropped']
+    if not rules:
+        return []
+    _, red = R.guards(probe)
+    out = [L['lessons_line'].format(n=len(rules), p=len(R.proposed()), h=len(R.hot_lines()), g=len(red))]
+    hot = R.hot_lines()
+    if hot:
+        out.append(R.LX['hot'] + ': ' + ' · '.join(hot))
+    if red:
+        out.append(R.LX['guards_red'] + ': ' + ', '.join(f"{r['id']} {r['guard']}" for r in red))
+    return out
 
 
 def hook_session(inp):
     text = brief(run())
     if inp.get('source') == 'compact':
         text = L['compact'] + '\n' + text
+    text = fit([text[:1200]] + lessons_lines() + [owner_events() if CFG['modules'].get('board') else ''], CFG['budget']['session_chars'])
     _emit({'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': text}})
 
 
@@ -514,10 +659,42 @@ def main(a):
         io.open(REG, 'a', encoding='utf-8').close()
     if a[:1] == ['hook']:
         try:
-            {'inbox': hook_inbox, 'stop': hook_stop, 'session': hook_session}[a[1]](_stdin())
+            with locked():
+                {'prompt': hook_prompt, 'inbox': hook_prompt, 'stop': hook_stop, 'session': hook_session}[a[1]](_stdin())
         except Exception:                                   # (a hook must never break the session)
             pass
         return 0
+    if a[:1] in (['recall'], ['rule'], ['ledger'], ['lesson'], ['cues']):
+        R = lessons()
+        if not R:
+            print('the lessons module is off (config.json → modules.lessons) or recall.py is missing'); return 1
+        if a[0] == 'recall':
+            return R.recall_cmd(a[1:])
+        if a[0] == 'lesson':
+            return R.lesson_cmd(a[1:])
+        if a[0] == 'cues':
+            return R.cues_cmd(a[1:])
+        with locked():
+            if a[0] == 'ledger':
+                R.ledger_add(' '.join(a[1:])); print(R.LX['ledger_ok'].format(line=' '.join(a[1:]))); return 0
+            return R.rule_cmd(a[1:])
+    if a[:1] == ['comment'] and len(a) > 2:
+        with locked():
+            reg = jsonl(REG)
+            it = next((i for i in reg if i.get('id') == a[1]), None)
+            if not it:
+                print('no item', a[1]); return 1
+            it.setdefault('comments', []).append({'ts': dt.datetime.now().isoformat(timespec='seconds'), 'by': 'agent', 'text': ' '.join(a[2:])})
+            it['touched'] = today()
+            write_jsonl(REG, reg)
+        print(L['commented'].format(id=a[1])); return 0
+    if a[:1] in (['add'], ['set'], ['take'], ['skip'], ['round']):
+        with locked():
+            return commands(a)
+    return commands(a)
+
+
+def commands(a):
     if a[:1] == ['add']:
         try:
             item = arg_json(a[1])
@@ -545,7 +722,7 @@ def main(a):
         try:
             for k, _, v in pairs:
                 if k:
-                    it[k] = arg_json(v) if k in ('probes', 'rubric', 'rounds') else v
+                    it[k] = arg_json(v) if k in ('probes', 'rubric', 'rounds', 'rank', 'comments', 'blocked_by', 'tags') else v
         except ValueError as e:
             print(L['bad_json'].format(err=e)); return 1
         if 'rounds' in it and not isinstance(it['rounds'], list):
@@ -575,6 +752,10 @@ def main(a):
         io.open(STATUS, 'w', encoding='utf-8', newline='\n').write(status_md(r))
         print(STATUS)
         print(brief(r))
+        R = lessons()
+        if R:
+            R.render_rules_md()
+            print('\n'.join(lessons_lines()))
     elif a[:1] == ['selftest']:
         print('control:', 'ok — the fake probes failed' if r['control_ok'] else 'BROKEN')
         print(brief(r))

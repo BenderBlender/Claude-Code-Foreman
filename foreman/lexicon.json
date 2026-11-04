@@ -1,0 +1,30 @@
+{
+ "_about": "Foreman 2.0 recall: concept groups — words of one idea in both languages; a query word pulls its partners in at weight 0.55. Generic software work; add your project's own words (a film studio would add «кадр, shot, рендер…»). Stems are computed on load.",
+ "concepts": {
+  "test": ["test", "tests", "testing", "pytest", "unit test", "тест", "тесты", "проверка", "проверить", "прогон"],
+  "deploy": ["deploy", "deployment", "release to prod", "production", "выкатить", "деплой", "развернуть", "прод"],
+  "commit": ["commit", "push", "git", "branch", "merge", "pull request", "коммит", "закоммитить", "ветка", "слияние", "пулл-реквест"],
+  "docs": ["docs", "documentation", "readme", "guide", "документация", "описание", "инструкция", "ридми"],
+  "config": ["config", "settings", "configuration", "env", "настройки", "конфиг", "конфигурация", "параметры"],
+  "error": ["error", "bug", "crash", "exception", "traceback", "fails", "ошибка", "баг", "падает", "сломалось", "исключение"],
+  "performance": ["performance", "slow", "speed", "fast", "latency", "memory usage", "скорость", "медленно", "быстро", "тормозит", "производительность"],
+  "security": ["security", "secret", "password", "token", "api key", "credentials", "безопасность", "пароль", "секрет", "токен", "ключ"],
+  "ask_first": ["ask first", "confirm", "permission", "approval", "спроси", "спросить", "подтверждение", "разрешение", "согласовать"],
+  "screenshot": ["screenshot", "image", "picture", "screen", "скриншот", "снимок экрана", "картинка", "изображение"],
+  "file": ["file", "folder", "path", "directory", "файл", "папка", "путь", "каталог"],
+  "api": ["api", "endpoint", "route", "request", "response", "маршрут", "запрос", "ответ", "эндпоинт"],
+  "database": ["database", "db", "sql", "table", "migration", "query", "база данных", "база", "таблица", "миграция"],
+  "ui": ["ui", "interface", "button", "panel", "page", "layout", "интерфейс", "кнопка", "панель", "страница", "окно"],
+  "release": ["release", "version", "changelog", "tag", "релиз", "версия", "выпуск", "список изменений"],
+  "review": ["review", "code review", "check the code", "ревью", "ревизия", "проверка кода", "посмотри код"],
+  "delete": ["delete", "remove", "drop", "erase", "rm", "удалить", "удаление", "стереть", "снести"],
+  "rename": ["rename", "move", "refactor", "переименовать", "перенести", "рефакторинг"],
+  "dependency": ["dependency", "package", "library", "install", "pip", "npm", "зависимость", "пакет", "библиотека", "установить"],
+  "logging": ["log", "logging", "logs", "print", "лог", "логи", "журнал", "вывод"],
+  "i18n": ["translation", "language", "russian", "english", "locale", "перевод", "язык", "русский", "английский", "по-русски"],
+  "backup": ["backup", "copy", "restore", "snapshot", "бэкап", "резервная копия", "копия", "восстановить"],
+  "schedule": ["schedule", "cron", "timer", "later", "deadline", "расписание", "по расписанию", "срок", "потом"],
+  "budget": ["budget", "cost", "price", "limit", "tokens", "бюджет", "стоимость", "цена", "лимит", "токены"],
+  "measure": ["measure", "metric", "benchmark", "compare", "number", "замер", "измерить", "метрика", "сравнить", "цифры"]
+ }
+}
