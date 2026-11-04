@@ -135,7 +135,7 @@ def strip_ours(settings):
     return settings
 
 
-def claude_section(proj, lang, remove=False):
+def claude_section(proj, lang, remove=False, promises=True):
     p = os.path.join(proj, 'CLAUDE.md')
     s = io.open(p, encoding='utf-8').read() if os.path.exists(p) else ''
     if (START in s) != (END in s):                          # (one mark without the other: never guess where the section ends)
@@ -145,6 +145,12 @@ def claude_section(proj, lang, remove=False):
         s = (s[:a].rstrip('\n') + ('\n\n' if s[:a].strip() else '') + s[b:].lstrip('\n')).rstrip('\n') + ('\n' if s.strip() else '')
     if not remove:
         sec = io.open(os.path.join(KIT, 'foreman', f'claude_section.{lang}.md'), encoding='utf-8').read().strip()
+        if not promises:                                    # (lessons only — a project with its own registry: no promise rules here)
+            head, _, rest = sec.partition('\n')
+            keep = [l for l in rest.splitlines() if l[:3] in ('8. ', '9. ')]
+            note = ('Прораб здесь ведёт только УРОКИ (модуль lessons): правила владельца в `.foreman/rules.jsonl`.' if lang == 'ru' else
+                    "Foreman runs only LESSONS here (module lessons): the owner's rules in `.foreman/rules.jsonl`.")
+            sec = head + '\n\n' + note + '\n\n' + '\n'.join(keep)
         s = (s.rstrip('\n') + '\n\n' if s.strip() else '') + START + '\n' + sec + '\n' + END + '\n'
     if s.strip() or os.path.exists(p):
         io.open(p, 'w', encoding='utf-8', newline='\n').write(s)
@@ -205,7 +211,7 @@ def install(proj, lang, yes_all, modules=None):
     for ev, groups in hooks_block(proj).items():
         hooks.setdefault(ev, []).extend(groups)
     write_json(sp, settings)
-    claude_section(proj, lang)
+    claude_section(proj, lang, promises=cfg['modules'].get('promises', True))
     out(L['done'])
     ok = selftest(proj)
     out(L['selftest_ok'] if ok else L['selftest_bad'])
