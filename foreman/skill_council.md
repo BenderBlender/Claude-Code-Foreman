@@ -29,8 +29,13 @@ The current state of the project (or your first solution) is candidate **L**. It
 ## 3. Each round: K substantially different candidates
 
 - Different *approaches*, not cosmetic variants of one idea. Novelty is not a merit.
-- **Code:** each candidate in its own git worktree, branched from the leader:
+- **Code in a git repository:** each candidate in its own git worktree, branched from the leader:
   `git worktree add ../<project>-p007-a -b council/P-007-a`
+- **Not a git repository** (many projects aren't): never modify the leader in place. Copy only the part the item touches
+  (the folders its probes and the change need) next to the project — `python -c "import shutil; shutil.copytree('src', '../cand-a/src')"`
+  or `robocopy src ..\cand-a\src /E` — and make each candidate in its copy. For a large project, candidates may be **diffs or
+  plans** instead of copies; apply only the winner, once.
+- Candidate paths in `check` / `compare` are relative to the **project folder**, wherever you type the command; `L=.` is the project.
 - **Irreversible actions** (deploys, migrations on shared data, deletions, sending messages, payments): candidates are **plans only**. Improve the plan, then execute once. Never execute several times "to compare".
 
 ## 4. The objective check
@@ -43,10 +48,13 @@ Also run the project's own tests in each worktree. A candidate with red probes, 
 
 ## 5. The blind judgment
 
-For what probes cannot see (meaning, clarity, taste, risk), call the **`foreman-judge`** agent. Give it:
+For what probes cannot see (meaning, clarity, taste, risk), call the **`foreman-judge`** agent. Blindness is easy to break, so:
 
-- the frozen rubric and the hard constraints;
-- the valid candidates **relabelled in a random order as X, Y, Z** (paths to the worktrees or the diffs/texts), with their probe and test results;
+- put the frozen rubric, the hard constraints and the owner's **language inline in the task** — the judge must not read `.foreman/`
+  (the rounds journal there names the leader and the winners);
+- give it **neutral copies** of the valid candidates under random labels — e.g. folders `../judge/X`, `../judge/Y`, `../judge/Z` with the
+  changed files, or diffs/texts — **not** the live worktrees (their names, branches and `git log` reveal the leader and the order);
+- add each candidate's probe and test results, under the same labels;
 - nothing about which one is the leader, which one you wrote last, or which one you prefer.
 
 ## 6. Accept a new leader only if
@@ -64,7 +72,9 @@ A tie, a doubt or a split verdict: **keep the leader**.
 python .foreman/foreman.py round P-007 '{"tried": ["L","A","B"], "winner": "A", "accepted": true, "why": "A: all probes green; judge: clearly better on criterion 1"}'
 ```
 
-`foreman.py` answers with the next round or a STOP.
+`tried` (a list) and `accepted` (true/false) are required; with `true`, also `winner`. In Windows PowerShell 5.1 the quotes inside
+a JSON argument are stripped — write the JSON to a file and pass `@round.json`. `foreman.py` answers with the next round or a STOP;
+after a STOP the item is marked `council: stopped` and further rounds are refused without `--force`.
 
 ## 8. Stop and report
 

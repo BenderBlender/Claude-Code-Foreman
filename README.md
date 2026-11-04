@@ -95,7 +95,7 @@ More rewriting is not more quality. A model that keeps polishing its own answer 
 
 1. **Criteria first.** The item's probes and a short rubric of soft criteria are fixed *before* the search. After the first round they're frozen: `foreman.py` refuses to change them without `--force`.
 2. **A kept leader.** The current version always competes. A new candidate replaces it only if it is verifiably better.
-3. **2–3 really different candidates** per round, each in its own git worktree. Irreversible actions (deploys, migrations, deletions) get candidate *plans*, never repeated executions.
+3. **2–3 really different candidates** per round, each in its own git worktree — or, in a folder that is not a git repository, in a copy of the part it changes (or as a diff / plan). Irreversible actions (deploys, migrations, deletions) get candidate *plans*, never repeated executions.
 4. **The objective check:** `foreman.py compare` runs the same probes on every candidate side by side.
 5. **A blind judge:** the `foreman-judge` agent ranks anonymous candidates X/Y/Z by the frozen rubric, with evidence, without knowing which one is the leader. "Tie" is an allowed answer.
 6. **A journal and a stop rule:** `foreman.py round` logs every round and calls STOP after 2 rounds without a gain or 3 rounds in total. You get the **best** version found, not the last one, plus a short account of what was tried and rejected. If the choice is a matter of taste, the finalists come to you.

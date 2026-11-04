@@ -40,4 +40,10 @@ RISKS of X: …
 TASTE: yes/no — <why>
 ```
 
-Write in the language of the owner (`.foreman/config.json` → `lang`).
+Write in the language named in your task (the owner's language).
+
+## Blindness
+
+Don't read `.foreman/` (its journal names the leader), don't run `git` (branches, worktree names and history reveal the order),
+and don't look outside the candidate copies you were given, except the project's tests when a claim needs checking. If you
+nevertheless learn which candidate is the leader, say so in your answer — the verdict is then not blind.

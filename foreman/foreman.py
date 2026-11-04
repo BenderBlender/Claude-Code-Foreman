@@ -43,6 +43,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, os.pardir))
+PROJECT = ROOT          # (ROOT is swapped while a candidate's folder is checked; PROJECT never is)
 REG, INBOX, STATUS, CONFIG = (os.path.join(HERE, n) for n in ('promises.jsonl', 'inbox.jsonl', 'STATUS.md', 'config.json'))
 OPEN = ('todo', 'doing', 'waiting', 'parked')
 PRIO = {'high': 0, 'normal': 1, 'later': 2}
@@ -82,7 +83,14 @@ T = {
                      'Если критерий ошибочен — скажите владельцу и повторите с --force.',
            'cmp_head': '{id}: сравнение по пробам (объективная часть; смысл и вкус оценивает слепой судья foreman-judge):',
            'cmp_best': 'Больше всего зелёных проб: {labels}', 'cmp_ctrl': 'контроль СЛОМАН — этой проверке не верить',
-           'no_root': 'нет такой папки:'},
+           'no_root': 'нет такой папки:',
+           'cmp_none': 'Ни один кандидат не прошёл ни одной пробы.',
+           'cmp_nc': 'не сравнимо на кандидатах (сервер лидера или абсолютный путь): {probes}',
+           'need_eq': 'кандидаты пишутся как МЕТКА=ПАПКА (L=. A=../проект-a); без «=»: {args}',
+           'bad_round': 'раунд — JSON-объект: "tried": [метки] и "accepted": true/false (при true — ещё "winner"); можно @файл.json',
+           'stopped': 'Консилиум по {id} уже остановлен ({n} раунд(ов)). Новый раунд — только с --force и по слову владельца.',
+           'guarded': 'Поле «{k}» ведёт сам Прораб; менять — только с --force (и тогда rounds — JSON-список).',
+           'bad_json': 'не JSON: {err}'},
     'en': {'head': 'FOREMAN ({when}; registry .foreman/promises.jsonl): {n} items · by probes done {ok} · partly {part} · not {no}{unk} · waiting for you {wait}',
            'unk': ' · not checked {n} (server down)', 'doing': 'In progress', 'next': 'Next by priority',
            'built': 'Probes green but status «todo/doing» — verify and mark «accepted»', 'red': 'RED — «accepted» but the probes disagree',
@@ -108,7 +116,14 @@ T = {
                      'candidates. If a criterion is wrong, tell the owner and repeat with --force.',
            'cmp_head': '{id}: comparison by probes (the objective part; meaning and taste go to the blind judge foreman-judge):',
            'cmp_best': 'Most green probes: {labels}', 'cmp_ctrl': 'control BROKEN — do not trust this check',
-           'no_root': 'no such folder:'},
+           'no_root': 'no such folder:',
+           'cmp_none': 'No candidate passes any probe.',
+           'cmp_nc': 'not comparable on candidates (the leader\'s server or an absolute path): {probes}',
+           'need_eq': 'candidates are LABEL=FOLDER (L=. A=../project-a); without «=»: {args}',
+           'bad_round': 'a round is a JSON object: "tried": [labels] and "accepted": true/false (with true also "winner"); @file.json works',
+           'stopped': 'The council on {id} has stopped ({n} round(s)). A new round only with --force and on the owner\'s word.',
+           'guarded': 'Foreman keeps the field «{k}» itself; change it only with --force (and then rounds is a JSON list).',
+           'bad_json': 'not JSON: {err}'},
 }
 
 
@@ -166,6 +181,24 @@ def set_root(path):
     ROOT = os.path.abspath(path)
 
 
+def cand_root(p):
+    """a candidate's folder, relative to the PROJECT (not to wherever the command was typed); «.» is the project itself"""
+    return os.path.normpath(p if os.path.isabs(p) else os.path.join(PROJECT, p))
+
+
+def arg_json(s):
+    """a JSON argument, or @file.json (PowerShell 5.1 strips the inner quotes of a JSON argument)"""
+    if s.startswith('@') and os.path.isfile(s[1:]):
+        s = read(s[1:])
+    return json.loads(s)
+
+
+def rounds_of(item):
+    """the council's rounds, whatever is stored (a hand-edited string must never break the brief or the hooks)"""
+    r = item.get('rounds')
+    return [x for x in r if isinstance(x, dict)] if isinstance(r, list) else []
+
+
 _server = {}
 
 
@@ -200,7 +233,10 @@ def probe(p):
 
 def check_item(item):
     res = [(p, probe(p)) for p in item.get('probes', [])]
-    vals = [v for _, v in res]
+    return state_of([v for _, v in res]), res
+
+
+def state_of(vals):
     if not vals:
         state = 'no-probes'
     elif all(v is True for v in vals):
@@ -211,7 +247,7 @@ def check_item(item):
         state = 'unchecked'
     else:
         state = 'not'
-    return state, res
+    return state
 
 
 def orphans():
@@ -239,25 +275,34 @@ def age(item):
 
 
 def probe_report(item, root):
-    """the item's probes and the control, run against another folder (e.g. a candidate's git worktree)"""
-    saved = ROOT
+    """the item's probes and the control, run against another folder (a candidate's copy or git worktree). A probe that does
+    not depend on the folder — `get:` asks the LEADER's server, an absolute path points at one place — is «not comparable» (?)
+    on a candidate: it would pass for an empty folder (review 04.11)"""
+    saved, other = ROOT, os.path.normcase(os.path.abspath(root)) != os.path.normcase(PROJECT)
     set_root(root)
+    res, nc = [], []
     try:
-        state, res = check_item(item)
+        for p in item.get('probes', []):
+            kind, _, rest = p.partition(':')
+            target = rest.partition(':')[0] if kind in ('grep', 'nogrep', 'doc') else rest
+            if other and (kind == 'get' or os.path.isabs(target)):
+                res.append((p, None)); nc.append(p)
+            else:
+                res.append((p, probe(p)))
         ctrl = all(check_item(c)[0] == 'not' for c in CONTROLS)
     finally:
         set_root(saved)
-    return state, res, ctrl
+    return state_of([v for _, v in res]), res, ctrl, nc
 
 
 def council_state(item):
-    rounds = item.get('rounds') or []
+    rounds = rounds_of(item)
     stale = 0
     for r in reversed(rounds):
-        if r.get('accepted'):
+        if r.get('accepted') is True:
             break
         stale += 1
-    lead = next((r.get('winner') for r in reversed(rounds) if r.get('accepted') and r.get('winner')), L['lead_initial'])
+    lead = next((r.get('winner') for r in reversed(rounds) if r.get('accepted') is True and r.get('winner')), L['lead_initial'])
     return len(rounds), stale, lead
 
 
@@ -288,7 +333,7 @@ def summary(r):
                 red=[i for i in live if i.get('status') == 'accepted' and i['_check'] in ('not', 'partly')],
                 built=[i for i in live if i.get('status') in ('todo', 'doing') and i['_check'] == 'done'],
                 stale=[i for i in live if i.get('status') == 'doing' and (age(i) or 0) > CFG.get('stale_days', 3)],
-                council=[i for i in live if i.get('rounds') and i.get('status') in OPEN])
+                council=[i for i in live if rounds_of(i) and i.get('status') in OPEN and i.get('council') != 'stopped'])
 
 
 def short(it, n=55):
@@ -332,7 +377,7 @@ def status_md(r):
             lines.extend([f'## {title}', ''] + [fmt(i) for i in items] + [''])
     block(L['waiting'], s['waiting'], lambda i: f"- **{i['id']}** {i.get('title')} — {i.get('waits') or i.get('next') or ''}")
     block(L['doing_h'], s['doing'], lambda i: f"- **{i['id']}** {i.get('title')} → {i.get('next') or ''}")
-    block(L['council'], s['council'], lambda i: f"- **{i['id']}** {i.get('title')} — {council_line(i)}; {i['rounds'][-1].get('why') or ''}")
+    block(L['council'], s['council'], lambda i: f"- **{i['id']}** {i.get('title')} — {council_line(i)}; {rounds_of(i)[-1].get('why') or ''}")
     block(L['next_h'], s['nxt'][:8], lambda i: f"- **{i['id']}** {i.get('title')} ({i.get('priority', '')}; {i.get('status')}; {i['_check']})")
     block(L['built_h'], s['built'], lambda i: f"- **{i['id']}** {i.get('title')}")
     block(L['lost_h'], r['orphans'], lambda o: f'- `{o}`')
@@ -400,42 +445,64 @@ def council_cmd(a):
     if not it:
         print('no item', ' '.join(a[1:2])); return 1
     if a[0] == 'check':
-        root = a[a.index('--root') + 1] if '--root' in a and a.index('--root') + 1 < len(a) else ROOT
+        if '--root' in a and a.index('--root') + 1 >= len(a):
+            print(L['no_root'], '--root ?'); return 1
+        root = cand_root(a[a.index('--root') + 1]) if '--root' in a else PROJECT
         if not os.path.isdir(root):
             print(L['no_root'], root); return 1
-        state, res, ctrl = probe_report(it, root)
+        state, res, ctrl, nc = probe_report(it, root)
         for p, v in res:
             print(f'  {MARKS[v]} {p}')
+        if nc:
+            print('  ' + L['cmp_nc'].format(probes='; '.join(nc)))
         print(f"{it['id']} @ {root}: {state} ({sum(v is True for _, v in res)}/{len(res)})" + ('' if ctrl else ' · ' + L['cmp_ctrl']))
-        return 0 if ctrl else 2
+        return 2 if not ctrl else 0 if state == 'done' else 1
     if a[0] == 'compare':
-        cands = [x.partition('=') for x in a[2:] if '=' in x] or [('L', '=', '.')]
+        loose = [x for x in a[2:] if '=' not in x]
+        if loose:
+            print(L['need_eq'].format(args=' '.join(loose))); return 1
+        cands = [x.partition('=') for x in a[2:]] or [('L', '=', '.')]
         print(L['cmp_head'].format(id=it['id']))
-        scores = {}
-        for label, _, root in cands:
+        scores, missing, nc_all = {}, False, set()
+        for label, _, raw in cands:
+            root = cand_root(raw)
             if not os.path.isdir(root):
-                print(f'  {label}: {L["no_root"]} {root}'); continue
-            state, res, ctrl = probe_report(it, root)
+                print(f'  {label}: {L["no_root"]} {root}'); missing = True; continue
+            state, res, ctrl, nc = probe_report(it, root)
+            nc_all.update(nc)
             green = sum(v is True for _, v in res)
             red = [p for p, v in res if v is False]
             if ctrl:
                 scores[label] = green
-            print(f'  {label} ({root}): {state} {green}/{len(res)}' + (f" · ✗ {'; '.join(red)}" if red else '')
+            print(f'  {label} ({raw}): {state} {green}/{len(res)}' + (f" · ✗ {'; '.join(red)}" if red else '')
                   + ('' if ctrl else ' · ' + L['cmp_ctrl']))
-        if scores:
-            top = max(scores.values())
-            print(L['cmp_best'].format(labels=', '.join(k for k, v in scores.items() if v == top)))
-        return 0
-    rec = json.loads(a[2]) if len(a) > 2 else {}                # 'round'
-    rounds = it.setdefault('rounds', [])
-    rounds.append({'n': len(rounds) + 1, 'date': today(), **rec})
+        if nc_all:
+            print('  ' + L['cmp_nc'].format(probes='; '.join(sorted(nc_all))))
+        top = max(scores.values()) if scores else 0
+        print(L['cmp_best'].format(labels=', '.join(k for k, v in scores.items() if v == top)) if top > 0 else L['cmp_none'])
+        return 1 if missing else 0
+    try:                                                         # 'round'
+        rec = arg_json(a[2]) if len(a) > 2 else None
+    except ValueError as e:
+        print(L['bad_json'].format(err=e)); return 1
+    if (not isinstance(rec, dict) or not isinstance(rec.get('tried'), list) or not rec['tried']
+            or not isinstance(rec.get('accepted'), bool) or (rec['accepted'] and not rec.get('winner'))):
+        print(L['bad_round']); return 1
+    if it.get('council') == 'stopped' and '--force' not in a:
+        print(L['stopped'].format(id=it['id'], n=len(rounds_of(it)))); return 1
+    rounds = rounds_of(it)
+    it['rounds'] = rounds + [{**rec, 'n': len(rounds) + 1, 'date': today()}]   # (the record cannot rewrite its own n / date)
     it['touched'] = today()
-    write_jsonl(REG, reg)
     n, stale, lead = council_state(it)
     cc = CFG['council']
-    print(json.dumps(rounds[-1], ensure_ascii=False))
-    print(council_line(it))
     why = L['why_stale'].format(s=stale) if stale >= cc['stop_after'] else (L['why_max'] if n >= cc['max_rounds'] else '')
+    if why:
+        it['council'] = 'stopped'
+    elif it.get('council') == 'stopped':
+        it.pop('council')
+    write_jsonl(REG, reg)
+    print(json.dumps(it['rounds'][-1], ensure_ascii=False))
+    print(council_line(it))
     print(L['council_stop'].format(why=why, lead=lead, id=it['id']) if why
           else L['council_go'].format(n=n + 1, max=cc['max_rounds'], k=cc['candidates']))
     return 0
@@ -452,7 +519,10 @@ def main(a):
             pass
         return 0
     if a[:1] == ['add']:
-        item = json.loads(a[1])
+        try:
+            item = arg_json(a[1])
+        except (ValueError, IndexError) as e:
+            print(L['bad_json'].format(err=e)); return 1
         reg = jsonl(REG)
         n = max([int(m.group(1)) for i in reg if (m := re.match(r'P-(\d+)$', str(i.get('id', ''))))] or [0]) + 1
         item = {'id': f'P-{n:03d}', 'date': today(), 'status': 'todo', 'priority': 'normal', **item, 'touched': today()}
@@ -466,11 +536,20 @@ def main(a):
         if not it:
             print('no item', a[1]); return 1
         pairs = [kv.partition('=') for kv in a[2:] if kv != '--force']
-        if it.get('rounds') and '--force' not in a and any(k in ('probes', 'rubric') for k, _, _ in pairs):
-            print(L['frozen'].format(id=it['id'], n=len(it['rounds']))); return 1
-        for k, _, v in pairs:
-            if k:
-                it[k] = json.loads(v) if k in ('probes', 'rubric') else v
+        force = '--force' in a
+        if rounds_of(it) and not force and any(k in ('probes', 'rubric') for k, _, _ in pairs):
+            print(L['frozen'].format(id=it['id'], n=len(rounds_of(it)))); return 1
+        for k, _, _ in pairs:
+            if k in ('id', 'rounds', 'council') and not force:      # (review 04.11: «set rounds=…» unfroze and broke the brief)
+                print(L['guarded'].format(k=k)); return 1
+        try:
+            for k, _, v in pairs:
+                if k:
+                    it[k] = arg_json(v) if k in ('probes', 'rubric', 'rounds') else v
+        except ValueError as e:
+            print(L['bad_json'].format(err=e)); return 1
+        if 'rounds' in it and not isinstance(it['rounds'], list):
+            print(L['guarded'].format(k='rounds')); return 1
         it['touched'] = today()
         write_jsonl(REG, reg)
         print(json.dumps(it, ensure_ascii=False))

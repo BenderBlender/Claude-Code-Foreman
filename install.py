@@ -39,7 +39,9 @@ TXT = {
            'selftest_bad': 'ВНИМАНИЕ: самопроверка не прошла — пришлите вывод выше разработчику.',
            'backup': 'Копия прежних настроек: {p}', 'un_done': 'Прораб убран (хуки, агенты, навык консилиума, раздел CLAUDE.md).',
            'un_kept': 'Ваши данные остались в .foreman/ (удалить: --purge — папка будет отложена в сторону, не стёрта).',
-           'purged': 'Папка .foreman отложена: {p}', 'yes': ('д', 'да', 'y', 'yes')},
+           'purged': 'Папка .foreman отложена: {p}', 'yes': ('д', 'да', 'y', 'yes'),
+           'bad_settings': 'Не читается {p} ({err}). Поправьте файл (или переименуйте его) и запустите установку снова — ничего не изменено.',
+           'bad_marks': 'В CLAUDE.md есть только одна из меток раздела Прораба — раздел не тронут, поправьте метки вручную.'},
     'en': {'ask_dir': 'Drag the project folder here (or type its path) and press Enter: ', 'no_dir': 'No such folder: {p}',
            'confirm': 'Install Foreman into "{p}"? [y/n] ', 'confirm_un': 'Remove Foreman from "{p}"? [y/n] ', 'cancel': 'Cancelled.',
            'py': 'Python 3.8 or newer is needed (this is {v}).', 'done': 'Done. Foreman is installed.',
@@ -52,7 +54,9 @@ TXT = {
            'selftest_bad': 'WARNING: the self-test failed — send the output above to the developer.',
            'backup': 'Previous settings backed up: {p}', 'un_done': 'Foreman removed (hooks, agents, the council skill, CLAUDE.md section).',
            'un_kept': 'Your data stays in .foreman/ (to remove: --purge — the folder is moved aside, not erased).',
-           'purged': 'The .foreman folder moved aside: {p}', 'yes': ('y', 'yes', 'д', 'да')},
+           'purged': 'The .foreman folder moved aside: {p}', 'yes': ('y', 'yes', 'д', 'да'),
+           'bad_settings': 'Cannot read {p} ({err}). Fix (or rename) the file and run the installer again — nothing was changed.',
+           'bad_marks': 'CLAUDE.md has only one of the Foreman section marks — the section was left alone; fix the marks by hand.'},
 }
 
 SPLASH = r"""
@@ -133,6 +137,8 @@ def strip_ours(settings):
 def claude_section(proj, lang, remove=False):
     p = os.path.join(proj, 'CLAUDE.md')
     s = io.open(p, encoding='utf-8').read() if os.path.exists(p) else ''
+    if (START in s) != (END in s):                          # (one mark without the other: never guess where the section ends)
+        out(L['bad_marks']); return
     if START in s and END in s:
         a, b = s.index(START), s.index(END) + len(END)
         s = (s[:a].rstrip('\n') + ('\n\n' if s[:a].strip() else '') + s[b:].lstrip('\n')).rstrip('\n') + ('\n' if s.strip() else '')
@@ -164,6 +170,10 @@ def install(proj, lang, yes_all):
     shutil.copy2(os.path.join(KIT, 'foreman', 'skill_council.md'), os.path.join(skill, 'SKILL.md'))
     sp = os.path.join(proj, '.claude', 'settings.local.json')
     if os.path.exists(sp):
+        try:                                                # (review 04.11: an unreadable file was silently replaced)
+            json.load(io.open(sp, encoding='utf-8'))
+        except ValueError as e:
+            out(L['bad_settings'].format(p=sp, err=e)); return 1
         os.makedirs(os.path.join(fdir, 'backup'), exist_ok=True)
         bk = os.path.join(fdir, 'backup', f'settings.local.json.{stamp()}')
         shutil.copy2(sp, bk)
