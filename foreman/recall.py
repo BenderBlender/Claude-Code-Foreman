@@ -680,7 +680,7 @@ EDIT_SHELL = re.compile(r'foreman\.py[\'"]?[^\n|;&]*--force|foreman\.py[\'"]?\s+
                         r'install\.py[^\n]*\s--(?:uninstall|modules|lang|purge)\b', re.I)
 COMMIT_MSG = re.compile(r'\bgit\s+commit\b[^\n]*?\s-(?:m|F)\s[\s\S]*', re.I)   # (the message to the end of the command)
 ENGINE_CALL = re.compile(r'\S*foreman\.py[\'"]?\s+(?:rule|set|add|take|skip|comment|round|ledger|lesson|recall|check|compare|brief|status|json|'
-                         r'selftest|cues|hook)\b', re.I)
+                         r'selftest|cues|hook|panel)\b', re.I)   # (the panel's own commands write only its folder — 2.2)
 PY_WRITE = re.compile(r'open\([^)]*[\'"][wa]\+?[\'"]|write_text\(|\.write\(|json\.dump\(', re.I)
 EDIT_OK = re.compile(r'(?:правка проверок|checks edited):\s*.{10,}', re.I)
 
