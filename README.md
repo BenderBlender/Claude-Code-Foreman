@@ -120,12 +120,15 @@ nothing is readable"), the correction should not vanish with the session either.
 - **A correction becomes a rule** in `.foreman/rules.jsonl`: *when* (the situation) → *do* (the operation) + your words **verbatim** + a few
   RU/EN keywords. A rule Claude writes is born **proposed**; it becomes **active** only on your word (`rule accept R-003`). An agent's guess
   is never a law.
-- **Found again before the next action.** The prompt hook searches your rules (stemmed Russian and English, synonyms, BM25 with a
-  trigger field) and shows the 1–3 that fit the message. An ordinary message costs **zero** characters; a hard cap of 1,200 characters per
+- **Found again before the next action.** The prompt hook searches your rules (stemmed Russian and English, BM25 with a trigger
+  field; synonyms from the lexicon re-rank) and shows the 1–3 that fit the message — a rule shows only when the message hits its
+  *when* or keys. An ordinary message costs **zero** characters; a hard cap of 1,200 characters per
   message keeps the context small.
 - **A correction must leave a record.** If your last message looks like a correction (cues in Russian and English, such as «опять»,
   "you forgot", "I told you"), the end of the turn is blocked until a rule was really written (a write to the rules or the ledger since
-  your message) or Claude explains «not a correction: …». The words "recorded" alone don't count.
+  your message) or Claude explains «not a correction: …». The words "recorded" alone don't count, and neither does a command that only
+  reads the rules. The app's own rows (the compaction summary, a background agent's notice, the hook's feedback) are never taken for
+  your message.
 - **A ladder for repeats:** level 0 note → 1 rule (recalled by words) → 2 hot (always in the session brief) → 3 **guard**: a probe
   checked at the end of every turn (`nogrep:README.md:TODO`). A guard that turns red blocks once; one red from the start never locks you out.
 - **Measured, not hoped.** Each rule keeps the message it came from (and optionally one it must NOT fire on); `recall --eval` reports
@@ -308,6 +311,7 @@ In Windows PowerShell 5.1 the quotes inside a JSON argument get stripped: put th
 | `lessons.extra_correction_cues` / `extra_teaching_cues` | `[]` | your own regex cues |
 | `lessons.rules_extra` | `[]` | globs of an existing rule book (markdown tables / `###` sections) to search read-only; a book with laws (`### P1 · …` sections, rows tagged `[P1]`) gets the law layer: the rows of the law the situation falls under rank higher |
 | `lessons.record_paths` | `[]` | regexes of your own files whose edit also counts as a lesson record at the Stop gate (e.g. your rule book) |
+| `lessons.record_hint` | `""` | where a lesson is written in this project (e.g. "a row in docs/rules/<area>.md"); the lesson note and the Stop gate then point there instead of `rule add` |
 | `lessons.memory_dir` | `"auto"` | Claude Code's memory folder (read-only); `auto` finds `~/.claude/projects/<project>/memory` |
 
 ## Uninstall

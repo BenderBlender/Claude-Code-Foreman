@@ -39,7 +39,7 @@ ROOT = os.path.abspath(os.path.join(HERE, os.pardir))
 RULES, LEDGER, EVAL, EVENTS, LEXICON, RULES_MD = (os.path.join(HERE, n) for n in
                                                   ('rules.jsonl', 'ledger.md', 'eval.jsonl', 'events.jsonl', 'lexicon.json', 'RULES.md'))
 DEFAULTS = {'stop_gate': 'correction', 'extra_correction_cues': [], 'extra_teaching_cues': [], 'rules_extra': [],
-            'record_paths': [], 'memory_dir': 'auto', 'index_skills': True}
+            'record_paths': [], 'record_hint': '', 'memory_dir': 'auto', 'index_skills': True}
 BUDGET = {'prompt_chars': 1200, 'session_chars': 2000, 'recall_hits': 3, 'recall_chars': 700, 'hot_rows': 5}
 CFG, LANG, LX = {'lessons': dict(DEFAULTS), 'budget': dict(BUDGET)}, 'ru', {}
 
@@ -60,12 +60,18 @@ TXT = {
                          'ответа — «записано: R-…» (после записи) или «не поправка: <почему>».'),
            'reflect_t': ('ПРОРАБ·урок: похоже на УЧЁБУ — приём или предпочтение (сработало «{cue}»). Если это стоит запомнить — rule add '
                          '(уровень 1, статус «предложено» до слова владельца); иначе ответь «не поправка: <почему>».'),
+           'reflect_c_own': ('ПРОРАБ·урок: похоже на ПОПРАВКУ («{cue}»). До конца хода: (1) правило уже есть? (recall) — назови, почему не '
+                             'сработало; (2) корень причины; (3) где ещё повторится; (4) повтор → уровень выше; (5) запись: {hint}. В конце '
+                             'ответа — «записано: <где>» (после записи) или «не поправка: <почему>».'),
+           'reflect_t_own': ('ПРОРАБ·урок: похоже на УЧЁБУ — приём или предпочтение (сработало «{cue}»). Если это стоит запомнить — '
+                             'запись: {hint}; иначе ответь «не поправка: <почему>».'),
+           'gate_own': 'Запись в этом проекте: {hint}.',
            'pack_head': 'ПРОРАБ·память (по сообщению):', 'pack_more': 'Больше: python .foreman/foreman.py recall <что собираюсь сделать>',
            'gate': ('ПРОРАБ·урок (Stop): последнее сообщение владельца похоже на {kind} (сработало «{cue}»): «{text}». С тех пор ничего не '
                     'записано в правила / журнал / память, а в ответе нет «не поправка: <почему>» или «уже записано: R-…». Перед остановкой: '
                     'протокол урока (правило уже есть? корень, где ещё, ОДНО правило rule add … --situation) и строка «записано: R-…» — '
                     'или «не поправка: <почему>», если это не урок.'),
-           'kind_c': 'ПОПРАВКУ', 'kind_t': 'УЧЁБУ',
+           'kind_c': 'ПОПРАВКУ', 'kind_t': 'УЧЁБУ', 'bad_level': 'уровень — число 0…3',
            'guard': 'ПРОРАБ·страж: правило {id} («{when}») нарушено: {probe} красная. Исправь или скажи владельцу.',
            'hot': 'Горячие правила', 'guards_red': 'Стражи красные', 'proposed': 'Правила ждут вашего «да» (rule accept)',
            'added': 'записано: {id} (статус «предложено» — станет «принято» словом владельца: rule accept {id})',
@@ -83,12 +89,18 @@ TXT = {
                          'reply with «recorded: R-…» (after writing it) or «not a correction: <why>».'),
            'reflect_t': ('FOREMAN·lesson: this looks like a TEACHING — a technique or a preference (cue «{cue}»). Worth keeping → rule add '
                          '(level 1, «proposed» until the owner says yes); otherwise answer «not a correction: <why>».'),
+           'reflect_c_own': ('FOREMAN·lesson: looks like a CORRECTION («{cue}»). Before the turn ends: (1) already a rule? (recall) — name it, '
+                             'why it did not fire; (2) the root cause; (3) where else it repeats; (4) a repeat → a level up; (5) record: {hint}. '
+                             'End the reply with «recorded: <where>» (after writing it) or «not a correction: <why>».'),
+           'reflect_t_own': ('FOREMAN·lesson: this looks like a TEACHING — a technique or a preference (cue «{cue}»). Worth keeping → '
+                             'record: {hint}; otherwise answer «not a correction: <why>».'),
+           'gate_own': 'In this project the record goes: {hint}.',
            'pack_head': 'FOREMAN·recall (by the message):', 'pack_more': 'More: python .foreman/foreman.py recall <what I am about to do>',
            'gate': ('FOREMAN·lesson (Stop): the owner\'s last message looks like a {kind} (cue «{cue}»): «{text}». Nothing was written to '
                     'the rules / ledger / memory since, and the reply has no «not a correction: <why>» or «already recorded: R-…». Before '
                     'stopping: the lesson protocol (already a rule? root cause, where else, ONE rule add … --situation) and the line '
                     '«recorded: R-…» — or «not a correction: <why>» if it is not a lesson.'),
-           'kind_c': 'CORRECTION', 'kind_t': 'TEACHING',
+           'kind_c': 'CORRECTION', 'kind_t': 'TEACHING', 'bad_level': 'the level is a number 0…3',
            'guard': 'FOREMAN·guard: rule {id} («{when}») is broken: {probe} is red. Fix it or tell the owner.',
            'hot': 'Hot rules', 'guards_red': 'Red guards', 'proposed': 'Rules waiting for your «yes» (rule accept)',
            'added': 'recorded: {id} (status «proposed» — the owner\'s word makes it «active»: rule accept {id})',
@@ -170,9 +182,20 @@ TOKEN = re.compile(r'[a-z0-9][a-z0-9_\-\.]*|[а-яё][а-яё\-]*')
 
 
 def stem(word):
+    """to a fixpoint: one pass is not idempotent (результаты → результат → результ), and a rule's keys and the owner's phrasing
+    must meet whatever form each was written in (review 04.11)"""
     w = word.lower().strip('.-_')
     if not w or w in STOP:
         return ''
+    for _ in range(3):
+        s = _stem1(w)
+        if s == w:
+            break
+        w = s
+    return w
+
+
+def _stem1(w):
     if CYR.fullmatch(w):
         if len(w) <= 4:
             return w
@@ -184,6 +207,8 @@ def stem(word):
             w = w[:-1]
         if len(w) > 5 and w[-2:] in ('ок', 'ек'):         # (the fleeting vowel: ошибок → ошибк, like ошибка)
             w = w[:-2] + 'к'
+        if len(w) >= 5 and w[-4:-3] in 'ае' and w.endswith('мен'):   # (время / времени, пламя / пламени meet: врем, плам)
+            w = w[:-2]
         return w
     if len(w) <= 3:
         return w
@@ -344,7 +369,8 @@ def search(query, blocks=None, top=8):
             if tt:
                 tl = sum(b.trigger.values())
                 s += 1.6 * w * math.log(1 + (n - tdf[t] + 0.5) / (tdf[t] + 0.5)) * tt * (k1 + 1) / (tt + k1 * (1 - bb + bb * tl / max(tavg, 1)))
-                trig_hit = trig_hit or w >= 1.0
+                trig_hit = trig_hit or w >= 1.0           # (a synonym only re-ranks: as a trigger it let «README» call a «docs»
+                                                          #  rule — measured 04.11: false positives 1/4 → 2/4, our pack 0.91 → 0.89)
         if s <= 0:
             continue
         own = len({t for t in q if b.tf.get(t) or b.trigger.get(t)})
@@ -392,7 +418,9 @@ def gate(hits, n_query):
     best, keep, drop, seen = hits[0]['score'], [], [], set()
     for h in hits:
         b = h['block']
-        why = ('no_trigger_match' if not h['trig'] else 'few_words' if h['own'] < min(2, n_query) else
+        # (one own word is enough once it hits the TRIGGER: «≥ 2» dropped the rules' own situations — recall@3 3/10 → 7/10 with the
+        #  fixpoint stem, our 65 cases 0.82 → 0.91, review 04.11)
+        why = ('no_trigger_match' if not h['trig'] else 'few_words' if h['own'] < 1 else
                'low_score' if h['score'] < 0.35 * best else 'same_file' if b.kind in ('memory', 'skill') and b.src in seen else '')
         (drop if why else keep).append((h, why))
         if not why:
@@ -462,10 +490,12 @@ def classify(text):
 
 
 def reflector(cls):
+    hint = str(CFG['lessons'].get('record_hint') or '')[:160]     # (a project with its own rule book: one book, not two)
+    own = '_own' if hint else ''
     if cls['correction']:
-        return LX['reflect_c'].format(cue=cls['correction'])
+        return LX['reflect_c' + own].format(cue=cls['correction'], hint=hint)
     if cls['teaching']:
-        return LX['reflect_t'].format(cue=cls['teaching'])
+        return LX['reflect_t' + own].format(cue=cls['teaching'], hint=hint)
     return ''
 
 
@@ -480,26 +510,46 @@ def log_cue(cls):
 KNOWLEDGE = re.compile(r'rules\.jsonl|ledger\.md|lexicon\.json|eval\.jsonl|foreman\.py[\'"]? (rule|ledger)|[\\/]memory[\\/][^\\/]+\.md|'
                        r'SKILL\.md|CLAUDE\.md', re.I)
 REFUSE = re.compile(r'не поправка:|не правка:|not a correction:', re.I)
+# (a shell command counts only when it WRITES: the engine's rule / ledger commands, a redirect, a copy, an in-place edit — review 04.11)
+WRITE_CMD = re.compile(r'foreman\.py[\'"]?\s+(rule\s+(add|accept|set|drop)|ledger|lesson)|(?<![0-9&])>>?\s*[^\s&|>]|\btee\b|'
+                       r'Set-Content|Add-Content|Out-File|\bsed\s+-i|\b(cp|mv|copy|move)\b|Copy-Item|Move-Item', re.I)
 ALREADY = re.compile(r'(?:уже записано|already recorded):?\s*(R-\d+)', re.I)
 
 
-def read_transcript(path, tail=4 * 1024 * 1024):
-    out = []
+def read_transcript(path, tail=4 * 1024 * 1024, cap=64 * 1024 * 1024):
+    """the transcript's tail, doubled backwards until it holds a row of the owner's (one big tool result fills 4 MB alone: 28 of 102
+    turns of a real session — review 04.11), at most 64 MB"""
+    out, n = [], tail
     try:
         size = os.path.getsize(path)
         with open(path, 'rb') as f:
-            f.seek(max(0, size - tail))
-            data = f.read().decode('utf-8', 'replace')
+            while True:
+                f.seek(max(0, size - n))
+                data = f.read().decode('utf-8', 'replace')
+                if size > n:
+                    data = data[data.find('\n') + 1:]       # (the first line is cut in the middle)
+                out = []
+                for line in data.splitlines():
+                    try:
+                        out.append(json.loads(line))
+                    except ValueError:
+                        pass
+                if size <= n or n >= cap or any(_said(e) is not None for e in out):
+                    return out
+                n *= 2
     except OSError:
         return out
-    if size > tail:
-        data = data[data.find('\n') + 1:]                   # (the first line is cut in the middle)
-    for line in data.splitlines():
-        try:
-            out.append(json.loads(line))
-        except ValueError:
-            pass
-    return out
+
+
+def _said(e):
+    """→ the text of a user row that a person or the app typed into the chat ('' for a reminder-only row); None for a tool result,
+    the hook's own feedback (isMeta) and the compaction summary — none of them is the owner (review 04.11)"""
+    if e.get('type') != 'user' or e.get('isMeta') or e.get('isCompactSummary'):
+        return None
+    c = _content(e)
+    if any(b.get('type') == 'tool_result' for b in c):
+        return None
+    return REMINDER.sub('', ' '.join(b.get('text') or '' for b in c if b.get('type') == 'text')).strip()
 
 
 def _content(e):
@@ -524,13 +574,14 @@ def lesson_gate(transcript_path):
     ev = read_transcript(transcript_path)
     idx, cls, ts = -1, None, None
     for i in range(len(ev) - 1, -1, -1):
-        e = ev[i]
-        if e.get('type') != 'user' or any(b.get('type') == 'tool_result' for b in _content(e)):
+        raw = _said(ev[i])
+        if not raw:                                         # (a tool result, the hook's feedback, the summary, a bare reminder)
             continue
-        t = owner_text(' '.join(b.get('text') or '' for b in _content(e) if b.get('type') == 'text'))
-        if t:
-            idx, cls, ts = i, classify(t), _ts(e.get('timestamp'))
-            break
+        t = owner_text(raw)
+        if not t:              # (a background notice / a hand-back / a command began THIS turn: the owner's older message was judged
+            return ''          #  at the end of its own turn — re-judging it blocked every notification turn, review 04.11)
+        idx, cls, ts = i, classify(t), _ts(ev[i].get('timestamp'))
+        break
     if idx < 0 or not (cls['correction'] or (mode == 'all' and cls['teaching'])):
         return ''
     recorded, last_text = False, ''
@@ -543,7 +594,8 @@ def lesson_gate(transcript_path):
             if b.get('type') == 'tool_use' and b.get('name') in ('Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell'):
                 inp = b.get('input') or {}
                 target = str(inp.get('file_path') or inp.get('path') or inp.get('command') or '')
-                if KNOWLEDGE.search(target) or any(x.search(target) for x in extra):
+                shell = b.get('name') in ('Bash', 'PowerShell')
+                if (KNOWLEDGE.search(target) or any(x.search(target) for x in extra)) and (not shell or WRITE_CMD.search(target)):
                     recorded = True
             elif b.get('type') == 'text' and b.get('text'):
                 last_text = b['text']
@@ -555,13 +607,16 @@ def lesson_gate(transcript_path):
     if m and any(r.get('id') == m.group(1) for r in jsonl(RULES)):
         return ''
     kind = LX['kind_c'] if cls['correction'] else LX['kind_t']
-    return LX['gate'].format(kind=kind, cue=cls['correction'] or cls['teaching'], text=cls['text'][:160].replace('\n', ' '))
+    hint = str(CFG['lessons'].get('record_hint') or '')[:160]
+    return LX['gate'].format(kind=kind, cue=cls['correction'] or cls['teaching'], text=cls['text'][:160].replace('\n', ' ')) + \
+        (' ' + LX['gate_own'].format(hint=hint) if hint else '')
 
 
 # ---------------------------------------------------------------- guards (level 3) and hot rules (level 2)
-def guards(probe):
+def guards(probe, log=True):
     """→ (newly red, red): every active level-3 rule's probe; a guard red that was green at the last check blocks the Stop ONCE;
-    one red from the start only shows in the brief (a bad guard never locks a stranger out)"""
+    one red from the start only shows in the brief (a bad guard never locks a stranger out). Only the Stop hook logs the state
+    (log=True): a status or a brief in between swallowed the block (review 04.11)"""
     rules = [r for r in jsonl(RULES) if r.get('status') == 'active' and int(r.get('level') or 0) >= 3 and r.get('guard')][:20]
     if not rules:
         return [], []
@@ -576,7 +631,7 @@ def guards(probe):
             red.append(r)
             if last.get(r['id']) is True:
                 newly.append(r)
-        if last.get(r['id']) != ok:
+        if log and last.get(r['id']) != ok:
             append_jsonl(EVENTS, {'ts': dt.datetime.now().isoformat(timespec='seconds'), 'by': 'foreman', 'kind': 'guard', 'id': r['id'], 'ok': ok})
     return newly, red
 
@@ -651,6 +706,8 @@ def rule_cmd(a, probe_kinds=('file', 'grep', 'nogrep', 'doc')):
                 if not k or k in ('id', 'status'):
                     continue
                 if k == 'level':
+                    if not v.strip().isdigit() or not 0 <= int(v) <= 3:
+                        print(LX['bad_level']); return 1
                     v = int(v)
                     if v >= 2 and it.get('status') != 'active':
                         print(LX['only_active']); return 1

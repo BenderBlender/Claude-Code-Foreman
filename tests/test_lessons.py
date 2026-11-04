@@ -50,6 +50,22 @@ def transcript(path, owner, assistant_blocks, ts_shift=60):
     return path
 
 
+def rows_file(path, rows):
+    """a transcript of real-format rows: ('owner', text) · ('say', text) · ('tool', name, input) · ('meta', text) · ('summary', text)"""
+    ts = (dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=60)).isoformat().replace('+00:00', 'Z')
+    out = []
+    for r in rows:
+        if r[0] in ('owner', 'meta', 'summary'):
+            out.append({'type': 'user', 'timestamp': ts, 'message': {'role': 'user', 'content': r[1]},
+                        **({'isMeta': True} if r[0] == 'meta' else {'isCompactSummary': True} if r[0] == 'summary' else {})})
+        elif r[0] == 'say':
+            out.append({'type': 'assistant', 'message': {'role': 'assistant', 'content': [{'type': 'text', 'text': r[1]}]}})
+        else:
+            out.append({'type': 'assistant', 'message': {'role': 'assistant', 'content': [{'type': 'tool_use', 'name': r[1], 'input': r[2]}]}})
+    io.open(path, 'w', encoding='utf-8').write(''.join(json.dumps(x, ensure_ascii=False) + '\n' for x in out))
+    return path
+
+
 def install(proj, *extra):
     return subprocess.run([PY, os.path.join(KIT, 'install.py'), proj, '--yes', *extra], capture_output=True, encoding='utf-8')
 
@@ -135,6 +151,26 @@ try:
     o = hook(proj, 'stop', {'stop_hook_active': True, 'transcript_path': transcript(tp, corr, say('x'))})
     check('stop_hook_active → never twice', o == {}, o)
 
+    # the app's own rows are not the owner (Fable's final review 04.11: every compaction / background notice blocked)
+    o = hook(proj, 'stop', {'transcript_path': rows_file(tp, [('owner', 'сделай отчёт по тестам'), ('say', 'делаю'),
+             ('summary', 'This session is being continued… the owner said «опять забыл подписать», the rule …'), ('say', 'Готово.')])})
+    check('the compaction summary is not the owner → pass', o == {}, o)
+    o = hook(proj, 'stop', {'transcript_path': rows_file(tp, [('owner', corr), ('say', 'не поправка: вкус, не правило'),
+             ('owner', '<task-notification><task-id>a1</task-id><status>completed</status></task-notification>'),
+             ('say', 'Фоновый агент закончил: отчёт в report.md.')])})
+    check('a background notice after an answered correction → pass (no re-judging)', o == {}, o)
+    o = hook(proj, 'stop', {'transcript_path': rows_file(tp, [('owner', 'спасибо, всё понятно и отлично'), ('say', 'ок'),
+             ('meta', 'Stop hook feedback: ПРОРАБ·урок … похоже на ПОПРАВКУ «опять ты забыл» … ОДНО правило'), ('say', 'ок')])})
+    check('the hook\'s own feedback row is not the owner → pass', o == {}, o)
+    o = hook(proj, 'stop', {'transcript_path': rows_file(tp, [('owner', corr), ('tool', 'Bash', {'command': 'cat .foreman/rules.jsonl'}),
+             ('say', 'Исправил.')])})
+    check('a command that only READS the rules is not a record → block', o.get('decision') == 'block', o)
+    io.open(os.path.join(proj, '.foreman', 'inbox.jsonl'), 'a', encoding='utf-8').write('{"id": "I-9", "text": "обре\n')
+    o = hook(proj, 'stop', {'transcript_path': transcript(tp, corr, say('Исправил подписи.'))})
+    check('a corrupted inbox line does not silence the Stop hook → block', o.get('decision') == 'block' and 'ПОПРАВКУ' in o.get('reason', ''), o)
+    code, out = fm(proj, 'rule', 'set', 'R-001', 'level=abc')
+    check('rule set level=abc → a message, not a traceback', code == 1 and 'Traceback' not in out, out)
+
     # guards: green → red blocks ONCE; red from the start never blocks
     io.open(os.path.join(proj, 'README.md'), 'w', encoding='utf-8').write('# app\n')
     fm(proj, 'rule', 'add', json.dumps({'when': 'editing the README', 'do': 'no TODO left in it', 'quote': 'никаких TODO в README',
@@ -146,6 +182,8 @@ try:
     quiet = transcript(tp, 'спасибо, хорошо', say('ok'))
     o1 = hook(proj, 'stop', {'transcript_path': quiet})
     io.open(os.path.join(proj, 'README.md'), 'a', encoding='utf-8').write('TODO: later\n')
+    fm(proj, 'status')                                      # (a status / a brief in between must not spend the block — review 04.11)
+    hook(proj, 'session', {'source': 'compact'})
     o2 = hook(proj, 'stop', {'transcript_path': quiet})
     o3 = hook(proj, 'stop', {'transcript_path': quiet})
     check('guard: green → no block; turns red → block once; stays red → no second block',
@@ -175,6 +213,26 @@ for i in range(10):
     r = subprocess.run([PY, os.path.join(KIT, 'install.py'), p2, '--uninstall', '--yes'], capture_output=True, encoding='utf-8')
     s2 = json.load(io.open(os.path.join(p2, '.claude', 'settings.local.json'), encoding='utf-8'))
     check('uninstall leaves no Foreman hook', 'foreman.py' not in json.dumps(s2), s2)
+
+    # lessons only, in a project with its own rule book, judge and council skill (our own install, 04.11)
+    p3 = os.path.join(base, 'proj3')
+    own = {os.path.join(p3, '.claude', 'agents', 'foreman-judge.md'): 'our judge\n',
+           os.path.join(p3, '.claude', 'skills', 'foreman-council', 'SKILL.md'): 'our council\n'}
+    for path, text in own.items():
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        io.open(path, 'w', encoding='utf-8').write(text)
+    r = install(p3, '--modules', 'lessons')
+    check('--modules lessons: the self-test passes (a quiet session is right)', r.returncode == 0, r.stdout[-400:])
+    check('--modules lessons: the own judge and council skill untouched, no foreman agent',
+          all(io.open(p, encoding='utf-8').read() == t for p, t in own.items())
+          and not os.path.exists(os.path.join(p3, '.claude', 'agents', 'foreman.md')))
+    c3 = json.load(io.open(os.path.join(p3, '.foreman', 'config.json'), encoding='utf-8'))
+    c3['lessons']['record_hint'] = 'a row in docs/rules.md'
+    io.open(os.path.join(p3, '.foreman', 'config.json'), 'w', encoding='utf-8').write(json.dumps(c3))
+    o = hook(p3, 'prompt', {'prompt': 'опять ты забыл подписать картинки, это неприемлемо'})
+    check('record_hint: the lesson note points at the own book, not rule add', 'docs/rules.md' in ctx(o) and 'rule add' not in ctx(o), ctx(o))
+    r = subprocess.run([PY, os.path.join(KIT, 'install.py'), p3, '--uninstall', '--yes'], capture_output=True, encoding='utf-8')
+    check('uninstall keeps the owner\'s own judge and council skill', all(os.path.exists(p) for p in own), r.stdout[-300:])
 finally:
     shutil.rmtree(base, ignore_errors=True)
 print('LESSONS TEST:', 'OK' if not fails else f'{fails} FAIL')

@@ -544,7 +544,7 @@ def hook_stop(inp):
             for r in fresh:
                 r['reminded'] = dt.datetime.now().isoformat(timespec='seconds')
             write_jsonl(INBOX, rows)
-            reasons.append(L['hook_stop'].format(list='; '.join(f"{r['id']}: «{r['text'][:120]}»" for r in fresh)))
+            reasons.append(L['hook_stop'].format(list='; '.join(f"{r.get('id', '?')}: «{str(r.get('text', ''))[:120]}»" for r in fresh)))
     R = lessons()
     if R:
         reasons.append(R.lesson_gate(inp.get('transcript_path')))
@@ -562,7 +562,7 @@ def lessons_lines():
     rules = [r for r in R.jsonl(R.RULES) if r.get('status') != 'dropped']
     if not rules:
         return []
-    _, red = R.guards(probe)
+    _, red = R.guards(probe, log=False)
     out = [L['lessons_line'].format(n=len(rules), p=len(R.proposed()), h=len(R.hot_lines()), g=len(red))]
     hot = R.hot_lines()
     if hot:

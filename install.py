@@ -36,6 +36,10 @@ TXT = {
                     'Спросите «что у нас по проекту?» — Claude покажет сводку и позовёт агента foreman для подробного отчёта.',
                     'Сложный пункт? Скажите «консилиум по P-…» — Claude сравнит 2–3 варианта и оставит лучший проверенный, а не последний.',
                     'Реестр: .foreman/promises.jsonl · сводка вручную: python .foreman/foreman.py brief'],
+           'next_lessons': ['Перезапустите Claude Code в этом проекте (или откройте /hooks и примите изменения) — хуки подхватятся.',
+                            'Поправляйте и учите как обычно: ход не закончится, пока урок не записан (правило, журнал, память, навык).',
+                            'Правила: python .foreman/foreman.py rule list · поиск: python .foreman/foreman.py recall <слова>'],
+           'kept_own': 'Оставлен ваш файл (он отличается от копии набора): {p}',
            'selftest_ok': 'Самопроверка: контроль сработал (подставные пробы провалились), хук сводки отвечает.',
            'selftest_bad': 'ВНИМАНИЕ: самопроверка не прошла — пришлите вывод выше разработчику.',
            'backup': 'Копия прежних настроек: {p}', 'un_done': 'Прораб убран (хуки, агенты, навык консилиума, раздел CLAUDE.md).',
@@ -51,6 +55,10 @@ TXT = {
                     'Ask "what is the project status?" — Claude shows the brief and calls the foreman agent for a full report.',
                     'A hard item? Say "council on P-…" — Claude compares 2–3 versions and keeps the best verified one, not the latest.',
                     'Registry: .foreman/promises.jsonl · brief by hand: python .foreman/foreman.py brief'],
+           'next_lessons': ['Restart Claude Code in this project (or open /hooks and accept the changes) — the hooks will load.',
+                            'Correct and teach as usual: the turn does not end until the lesson is recorded (a rule, the ledger, memory, a skill).',
+                            'Rules: python .foreman/foreman.py rule list · search: python .foreman/foreman.py recall <words>'],
+           'kept_own': 'Your own file is kept (it differs from the kit copy): {p}',
            'selftest_ok': 'Self-test: the control worked (the fake probes failed), the session hook answers.',
            'selftest_bad': 'WARNING: the self-test failed — send the output above to the developer.',
            'backup': 'Previous settings backed up: {p}', 'un_done': 'Foreman removed (hooks, agents, the council skill, CLAUDE.md section).',
@@ -156,6 +164,10 @@ def claude_section(proj, lang, remove=False, promises=True):
         io.open(p, 'w', encoding='utf-8', newline='\n').write(s)
 
 
+KIT_FILES = [('agent_foreman.md', 'agents/foreman.md'), ('agent_judge.md', 'agents/foreman-judge.md'),
+             ('skill_council.md', 'skills/foreman-council/SKILL.md')]       # (kit file → its place under .claude/)
+
+
 def put(src, dst, bdir):
     """copy a kit file over a project file; the old one, if different, goes to .foreman/backup/<stamp>/ first (2.0)"""
     if os.path.exists(dst) and io.open(dst, 'rb').read() != io.open(src, 'rb').read():
@@ -181,19 +193,17 @@ def install(proj, lang, yes_all, modules=None):
         cfg['modules'] = {m: m in modules for m in ('promises', 'lessons', 'board')}
     cfg['budget'] = {'prompt_chars': 1200, 'session_chars': 2000, 'recall_hits': 3, 'recall_chars': 700, 'hot_rows': 5, **(cfg.get('budget') or {})}
     cfg['lessons'] = {'stop_gate': 'correction', 'extra_correction_cues': [], 'extra_teaching_cues': [], 'rules_extra': [],
-                      'record_paths': [], 'memory_dir': 'auto', 'index_skills': True, **(cfg.get('lessons') or {})}
+                      'record_paths': [], 'record_hint': '', 'memory_dir': 'auto', 'index_skills': True, **(cfg.get('lessons') or {})}
     write_json(os.path.join(fdir, 'config.json'), cfg)
     for n in ('promises.jsonl', 'inbox.jsonl', 'rules.jsonl', 'eval.jsonl', 'events.jsonl'):
         io.open(os.path.join(fdir, n), 'a', encoding='utf-8').close()
     if not os.path.exists(os.path.join(fdir, 'ledger.md')):
         io.open(os.path.join(fdir, 'ledger.md'), 'w', encoding='utf-8').write('# Ledger — kept | revised | dropped -> what -> evidence\n\n')
-    agents = os.path.join(proj, '.claude', 'agents')
-    os.makedirs(agents, exist_ok=True)
-    put(os.path.join(KIT, 'foreman', 'agent_foreman.md'), os.path.join(agents, 'foreman.md'), bdir)
-    put(os.path.join(KIT, 'foreman', 'agent_judge.md'), os.path.join(agents, 'foreman-judge.md'), bdir)
-    skill = os.path.join(proj, '.claude', 'skills', 'foreman-council')
-    os.makedirs(skill, exist_ok=True)
-    put(os.path.join(KIT, 'foreman', 'skill_council.md'), os.path.join(skill, 'SKILL.md'), bdir)
+    if cfg['modules'].get('promises'):                     # (lessons only: the promise-side agents and skill are not ours to write)
+        for src, dst in KIT_FILES:
+            dst = os.path.join(proj, '.claude', dst)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            put(os.path.join(KIT, 'foreman', src), dst, bdir)
     if os.path.isdir(bdir):
         out(L['backup'].format(p=bdir))
     sp = os.path.join(proj, '.claude', 'settings.local.json')
@@ -213,25 +223,33 @@ def install(proj, lang, yes_all, modules=None):
     write_json(sp, settings)
     claude_section(proj, lang, promises=cfg['modules'].get('promises', True))
     out(L['done'])
-    ok = selftest(proj)
+    promises = cfg['modules'].get('promises', True)
+    ok = selftest(proj, promises)
     out(L['selftest_ok'] if ok else L['selftest_bad'])
-    for line in L['next']:
+    for line in L['next'] if promises else L['next_lessons']:
         out('  • ' + line)
     return 0 if ok else 2
 
 
-def selftest(proj):
+def selftest(proj, promises=True):
     fm = os.path.join(proj, '.foreman', 'foreman.py')
-    a = subprocess.run([sys.executable, fm, 'selftest'], capture_output=True, text=True, encoding='utf-8', errors='replace')
-    b = subprocess.run([sys.executable, fm, 'hook', 'session'], input='{"source": "startup"}', capture_output=True, text=True,
-                       encoding='utf-8', errors='replace')
+    run = lambda *a, inp=None: subprocess.run([sys.executable, fm, *a], input=inp, capture_output=True, text=True, encoding='utf-8',
+                                              errors='replace')
+    a = run('selftest')
+    b = run('hook', 'session', inp='{"source": "startup"}')
     try:
         ctx = json.loads(b.stdout)['hookSpecificOutput']['additionalContext']
     except (ValueError, KeyError, TypeError):
         ctx = ''
-    if a.returncode != 0 or not ctx:
+    if promises:
+        good = a.returncode == 0 and bool(ctx)
+    else:                                                   # (lessons only: a quiet session is right; the recall must answer)
+        c = run('recall', 'test')
+        good = a.returncode == 0 and b.returncode == 0 and c.returncode == 0
+        b = c if b.returncode == 0 else b
+    if not good:
         out(a.stdout + a.stderr + b.stdout + b.stderr)
-    return a.returncode == 0 and bool(ctx)
+    return good
 
 
 def uninstall(proj, purge, yes_all):
@@ -240,15 +258,17 @@ def uninstall(proj, purge, yes_all):
     sp = os.path.join(proj, '.claude', 'settings.local.json')
     if os.path.exists(sp):
         write_json(sp, strip_ours(read_json(sp, {})))
-    for ag in ('foreman.md', 'foreman-judge.md'):
-        ag = os.path.join(proj, '.claude', 'agents', ag)
-        if os.path.exists(ag):
-            os.remove(ag)
     skill = os.path.join(proj, '.claude', 'skills', 'foreman-council')
-    if os.path.exists(os.path.join(skill, 'SKILL.md')):
-        os.remove(os.path.join(skill, 'SKILL.md'))
-        if not os.listdir(skill):
-            os.rmdir(skill)
+    for src, dst in KIT_FILES:
+        dst = os.path.join(proj, '.claude', dst)
+        if os.path.exists(dst):                           # (only the kit's own unchanged copy goes; an adapted one is the owner's)
+            if io.open(dst, 'rb').read() == io.open(os.path.join(KIT, 'foreman', src), 'rb').read():
+                os.remove(dst)
+            else:
+                out(L['kept_own'].format(p=dst))
+    for d in (skill, os.path.dirname(skill), os.path.join(proj, '.claude', 'agents')):
+        if os.path.isdir(d) and not os.listdir(d):
+            os.rmdir(d)
     claude_section(proj, 'ru', remove=True)
     out(L['un_done'])
     fdir = os.path.join(proj, '.foreman')
@@ -278,6 +298,9 @@ def main(argv):
     proj = os.path.abspath(proj.strip().strip('"').strip("'"))
     if not os.path.isdir(proj):
         out(L['no_dir'].format(p=proj)); return 1
+    if '--lang' not in argv:                                # (an update keeps the project's language — review 04.11)
+        lang = read_json(os.path.join(proj, '.foreman', 'config.json'), {}).get('lang') or lang
+        L = TXT.get(lang, TXT['ru'])
     if '--uninstall' in argv:
         return uninstall(proj, '--purge' in argv, '--yes' in argv)
     mods = None
