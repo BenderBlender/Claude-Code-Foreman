@@ -45,6 +45,7 @@ python .foreman/foreman.py compare P-007 L=. A=../<project>-p007-a B=../<project
 ```
 
 Also run the project's own tests in each worktree. A candidate with red probes, failing tests or a broken hard constraint is out. If every candidate fails, compare by the number of green probes and say so.
+Stop every process a candidate or a check started (a dev server, `python -m http.server`, a watcher, a browser) before the next round and before the report, and list in the report what was started and stopped — a forgotten helper server keeps a port for hours and sends the owner's browser to the wrong place (04.11).
 
 ## 5. The blind judgment
 

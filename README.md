@@ -430,6 +430,16 @@ An ordinary message: nothing. A request: one short inbox line. A correction: the
 more than 1,200 characters in all. The session start: the brief plus hot rules, at most 2,000 characters. All caps are in `budget`.
 </details>
 
+<details>
+<summary><b>The board does not open (or shows a list of files).</b></summary>
+
+Start it from a terminal or by double-clicking `.foreman/board.bat`: the link with the start key is printed in that window, and the
+browser opens it. If the configured port (8765) is taken by another program, the board takes the next free one and says so in the
+window — use the link printed there. A leftover helper server (for instance `python -m http.server 8765` that an agent started for a
+test and forgot) is the usual culprit: since 2.1.1 the board takes its port exclusively, so it can no longer «share» a busy port and
+send your browser to the wrong server.
+</details>
+
 ## The story
 
 Foreman was built by Claude together with a film producer who was building a 3D previsualisation studio with Claude Code, in November 2026. An audit of that project found seven lost promises of the same kind. The design was chosen by a panel of four models (Fable, a Claude critic, ChatGPT and Gemini), and all four said the same thing: a separate "boss" that reads the same notes would lose things the same way. What you need is a registry where *readiness is computed by a check, not by memory*.
