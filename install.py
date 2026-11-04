@@ -40,6 +40,12 @@ TXT = {
                             'Поправляйте и учите как обычно: ход не закончится, пока урок не записан (правило, журнал, память, навык).',
                             'Правила: python .foreman/foreman.py rule list · поиск: python .foreman/foreman.py recall <слова>'],
            'kept_own': 'Оставлен ваш файл (он отличается от копии набора): {p}',
+           'panel_found': 'Консилиум моделей (2.2): на важные решения Claude может собирать мнения нескольких нейросетей — тех, что у вас есть. Найдено:',
+           'panel_none': '  внешних нейросетей не найдено (Codex / Gemini / Qwen CLI, ключи OPENAI_API_KEY / GEMINI_API_KEY / OPENROUTER_API_KEY…, Ollama, LM Studio); субагенты Claude других моделей есть всегда',
+           'panel_ask': 'Включить консилиум моделей? Бриф уходит выбранным нейросетям; перед каждой отправкой Claude спросит вас. [д/н] ',
+           'panel_rule': ('10. **Важное, дорогое решение → консилиум моделей** (модуль panel, его включил владелец). Навык `foreman-panel`: один бриф '
+                          'без секретов → независимые ответы (`python .foreman/foreman.py panel run …` + свои субагенты других моделей) → проверка '
+                          'утверждений → `DECISION.md` → владельцу до сборки. Перед отправкой брифа наружу — спросить владельца.'),
            'own_note': 'Прораб здесь ведёт только УРОКИ (модуль lessons) по книге правил самого проекта.',
            'own_8': ('8. **Поправка владельца → урок.** Сообщение похоже на поправку («опять», «забыл», «я же просил»…) → протокол урока: '
                      'правило уже есть? (`python .foreman/foreman.py recall …`); корень причины; где ещё повторится; запись: {hint}. В конце '
@@ -65,6 +71,12 @@ TXT = {
                             'Correct and teach as usual: the turn does not end until the lesson is recorded (a rule, the ledger, memory, a skill).',
                             'Rules: python .foreman/foreman.py rule list · search: python .foreman/foreman.py recall <words>'],
            'kept_own': 'Your own file is kept (it differs from the kit copy): {p}',
+           'panel_found': 'Model panel (2.2): for important decisions Claude can gather the opinions of several AI models — the ones you have. Found:',
+           'panel_none': '  no outside models found (Codex / Gemini / Qwen CLI, keys OPENAI_API_KEY / GEMINI_API_KEY / OPENROUTER_API_KEY…, Ollama, LM Studio); Claude\'s own subagents of other models are always there',
+           'panel_ask': 'Switch the model panel on? The brief goes to the chosen models; Claude asks you before each sending. [y/n] ',
+           'panel_rule': ('10. **An important, costly decision → the model panel** (module panel, switched on by the owner). Skill `foreman-panel`: one '
+                          'brief without secrets → independent answers (`python .foreman/foreman.py panel run …` + own subagents of other models) → '
+                          'check the claims → `DECISION.md` → to the owner before building. Ask the owner before the brief leaves the machine.'),
            'own_note': "Foreman runs only LESSONS here (module lessons), over the project's own rule book.",
            'own_8': ("8. **The owner's correction → a lesson.** A message that looks like a correction (\"again\", \"you forgot\", \"I told you\"…) "
                      '→ the lesson protocol: already a rule? (`python .foreman/foreman.py recall …`); the root cause; where else it repeats; '
@@ -158,7 +170,7 @@ def strip_ours(settings):
     return settings
 
 
-def claude_section(proj, lang, remove=False, promises=True, hint=''):
+def claude_section(proj, lang, remove=False, promises=True, hint='', panel=False):
     p = os.path.join(proj, 'CLAUDE.md')
     s = io.open(p, encoding='utf-8').read() if os.path.exists(p) else ''
     if (START in s) != (END in s):                          # (one mark without the other: never guess where the section ends)
@@ -177,6 +189,8 @@ def claude_section(proj, lang, remove=False, promises=True, hint=''):
         if hint:                                            # (the project's own rule book: one book, not two — 04.11)
             sec = '\n'.join(TXT[lang]['own_8'].format(hint=hint) if l[:3] == '8. ' else TXT[lang]['own_9'].format(hint=hint)
                              if l[:3] == '9. ' else l for l in sec.splitlines())
+        if panel:
+            sec += '\n' + TXT[lang]['panel_rule']
         s = (s.rstrip('\n') + '\n\n' if s.strip() else '') + START + '\n' + sec + '\n' + END + '\n'
     if s.strip() or os.path.exists(p):
         io.open(p, 'w', encoding='utf-8', newline='\n').write(s)
@@ -203,8 +217,32 @@ def mark_legacy(fdir):
                                                                          + '\n' for r in rows))
 
 
-KIT_FILES = [('agent_foreman.md', 'agents/foreman.md'), ('agent_judge.md', 'agents/foreman-judge.md'),
-             ('skill_council.md', 'skills/foreman-council/SKILL.md')]       # (kit file → its place under .claude/)
+KIT_FILES = [('agent_foreman.md', 'agents/foreman.md', 'promises'), ('agent_judge.md', 'agents/foreman-judge.md', 'promises'),
+             ('skill_council.md', 'skills/foreman-council/SKILL.md', 'promises'),
+             ('skill_panel.md', 'skills/foreman-panel/SKILL.md', 'panel')]   # (kit file → its place under .claude/ → the module it needs)
+
+
+def panel_offer(proj, fdir, cfg, yes_all, modules):
+    """2.2 — the model panel is OFFERED, the owner decides: the members found here are shown and stored (so he can edit them), the
+    question asked interactively; a silent install (--yes) leaves it off unless --modules names it"""
+    put(os.path.join(KIT, 'foreman', 'panel.py'), os.path.join(fdir, 'panel.py'), os.path.join(fdir, 'backup', stamp()))
+    r = subprocess.run([sys.executable, os.path.join(fdir, 'foreman.py'), 'panel', 'detect', '--json'], capture_output=True, text=True,
+                       encoding='utf-8', errors='replace', timeout=60)
+    try:
+        found = json.loads(r.stdout)
+    except ValueError:
+        found = []
+    keep = ('name', 'kind', 'label', 'enabled', 'cmd', 'stdin', 'base_url', 'key_env', 'model', 'models', 'note')
+    cfg['panel']['members'] = [{k: m[k] for k in keep if k in m} for m in found if m.get('kind') != 'subagent']
+    outside = [m for m in found if m.get('kind') != 'subagent']
+    if modules is None and not cfg['modules'].get('panel') and not yes_all:
+        out(L['panel_found'])
+        for m in found:
+            out(f"  • {m.get('label', m['name'])} — {m.get('how', '')}" + (f" ({m['note']})" if m.get('note') else ''))
+        if not outside:
+            out(L['panel_none'])
+        cfg['modules']['panel'] = ask(L['panel_ask'], False)
+    write_json(os.path.join(fdir, 'config.json'), cfg)
 
 
 def put(src, dst, bdir):
@@ -221,20 +259,22 @@ def install(proj, lang, yes_all, modules=None):
     fdir = os.path.join(proj, '.foreman')
     os.makedirs(fdir, exist_ok=True)
     bdir = os.path.join(fdir, 'backup', stamp())
-    for n in ('foreman.py', 'recall.py', 'board.py', 'board.html', 'lexicon.json'):
+    for n in ('foreman.py', 'recall.py', 'board.py', 'board.html', 'panel.py', 'lexicon.json'):
         if n != 'lexicon.json' or not os.path.exists(os.path.join(fdir, n)):     # (the owner's own words stay in his lexicon)
             put(os.path.join(KIT, 'foreman', n), os.path.join(fdir, n), bdir)
     cfg = read_json(os.path.join(fdir, 'config.json'), {})
     cfg = {'lang': lang, 'stale_days': 3, 'allow_cmd': False, 'orphans': {'candidates': [], 'corpus': []}, 'extra_ask_cues': [], **cfg, 'lang': lang}
     cfg['council'] = {'candidates': 2, 'max_rounds': 3, 'stop_after': 2, **(cfg.get('council') or {})}
-    cfg['modules'] = {'promises': True, 'lessons': True, 'board': False, **(cfg.get('modules') or {})}
+    cfg['modules'] = {'promises': True, 'lessons': True, 'board': False, 'panel': False, **(cfg.get('modules') or {})}
     if modules is not None:
-        cfg['modules'] = {m: m in modules for m in ('promises', 'lessons', 'board')}
+        cfg['modules'] = {m: m in modules for m in ('promises', 'lessons', 'board', 'panel')}
+    cfg['panel'] = {'ask_each_time': True, 'timeout_s': 600, 'members': [], **(cfg.get('panel') or {})}
     cfg['board'] = {'port': 8765, 'poll_s': 3, 'token_file': '', 'registries': [], **(cfg.get('board') or {})}
     cfg['budget'] = {'prompt_chars': 1200, 'session_chars': 2000, 'recall_hits': 3, 'recall_chars': 700, 'hot_rows': 5, **(cfg.get('budget') or {})}
     cfg['lessons'] = {'stop_gate': 'correction', 'extra_correction_cues': [], 'extra_teaching_cues': [], 'rules_extra': [],
                       'record_paths': [], 'record_hint': '', 'confirm_days': 60, 'memory_dir': 'auto', 'index_skills': True, **(cfg.get('lessons') or {})}
     write_json(os.path.join(fdir, 'config.json'), cfg)
+    panel_offer(proj, fdir, cfg, yes_all, modules)
     for n in ('promises.jsonl', 'inbox.jsonl', 'rules.jsonl', 'eval.jsonl', 'events.jsonl', 'owner.jsonl'):
         io.open(os.path.join(fdir, n), 'a', encoding='utf-8').close()
     mark_legacy(fdir)
@@ -245,8 +285,8 @@ def install(proj, lang, yes_all, modules=None):
             f'#!/bin/sh\ncd "$(dirname "$0")/.." && exec "{sys.executable}" .foreman/foreman.py board\n')
     if not os.path.exists(os.path.join(fdir, 'ledger.md')):
         io.open(os.path.join(fdir, 'ledger.md'), 'w', encoding='utf-8').write('# Ledger — kept | revised | dropped -> what -> evidence\n\n')
-    if cfg['modules'].get('promises'):                     # (lessons only: the promise-side agents and skill are not ours to write)
-        for src, dst in KIT_FILES:
+    for src, dst, mod in KIT_FILES:                        # (lessons only: the promise-side agents and skill are not ours to write)
+        if cfg['modules'].get(mod):
             dst = os.path.join(proj, '.claude', dst)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             put(os.path.join(KIT, 'foreman', src), dst, bdir)
@@ -267,7 +307,8 @@ def install(proj, lang, yes_all, modules=None):
     for ev, groups in hooks_block(proj, cfg['modules'].get('promises', True)).items():
         hooks.setdefault(ev, []).extend(groups)
     write_json(sp, settings)
-    claude_section(proj, lang, promises=cfg['modules'].get('promises', True), hint=str(cfg['lessons'].get('record_hint') or '')[:160])
+    claude_section(proj, lang, promises=cfg['modules'].get('promises', True), hint=str(cfg['lessons'].get('record_hint') or '')[:160],
+                   panel=cfg['modules'].get('panel', False))
     out(L['done'])
     promises = cfg['modules'].get('promises', True)
     ok = selftest(proj, promises)
@@ -305,14 +346,14 @@ def uninstall(proj, purge, yes_all):
     if os.path.exists(sp):
         write_json(sp, strip_ours(read_json(sp, {})))
     skill = os.path.join(proj, '.claude', 'skills', 'foreman-council')
-    for src, dst in KIT_FILES:
+    for src, dst, _ in KIT_FILES:
         dst = os.path.join(proj, '.claude', dst)
         if os.path.exists(dst):                           # (only the kit's own unchanged copy goes; an adapted one is the owner's)
             if io.open(dst, 'rb').read() == io.open(os.path.join(KIT, 'foreman', src), 'rb').read():
                 os.remove(dst)
             else:
                 out(L['kept_own'].format(p=dst))
-    for d in (skill, os.path.dirname(skill), os.path.join(proj, '.claude', 'agents')):
+    for d in (skill, os.path.join(proj, '.claude', 'skills', 'foreman-panel'), os.path.dirname(skill), os.path.join(proj, '.claude', 'agents')):
         if os.path.isdir(d) and not os.listdir(d):
             os.rmdir(d)
     claude_section(proj, 'ru', remove=True)

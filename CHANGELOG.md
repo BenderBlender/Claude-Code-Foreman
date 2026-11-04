@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.2 — 2026-11-04 · Model panel (консилиум моделей)
+
+- **Model panel** (module `panel`, OFF by default — offered at install, the owner decides): one self-contained brief to several AI
+  models the owner has — Claude's own subagents of other models, CLIs (Codex — also in the Codex app's folder, Gemini, Qwen Code, `llm`),
+  OpenAI-compatible APIs by the key variable's name, local Ollama / LM Studio, a web chat by hand. `panel detect | new | run | review`;
+  answers in parallel, each in its own file with a header; a critic's stance; a second round without names; a failed member never
+  stops the others.
+- Safeguards: a brief with keys / passwords / e-mails is not sent; keys never written; `ask_each_time`; only the switched-on members.
+- Skill `foreman-panel` (the procedure: brief → independent answers → checked claims → DECISION.md → the owner before building);
+  CLAUDE.md rule 10 when the module is on.
+- Tests: panel 19 (fake CLI, fake OpenAI-compatible server).
+
 ## 2.1.1 — 2026-11-04 · The board starts by double-click on Windows
 
 - The board takes its port EXCLUSIVELY: http.server's default SO_REUSEADDR let it bind a port another local server already

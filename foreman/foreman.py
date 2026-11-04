@@ -825,6 +825,10 @@ def council_cmd(a):
 def main(a):
     if not os.path.exists(REG):
         io.open(REG, 'a', encoding='utf-8').close()
+    if a[:1] == ['panel']:                                 # (the model panel, 2.2 — panel.py next to this file)
+        sys.path.insert(0, HERE)
+        import panel
+        return panel.main(sys.modules[__name__], a[1:])
     if a[:1] == ['board']:                                 # (the owner's task board, 2.1 — board.py next to this file)
         sys.path.insert(0, HERE)
         import board

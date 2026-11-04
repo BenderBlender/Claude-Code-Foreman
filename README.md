@@ -184,6 +184,24 @@ registry — not only those that wait for you:
 
 <p align="center"><img src="assets/board-2560.png" alt="The Foreman board on a 2560×1440 screen: the strips «Waiting for you» and «What is broken» on top, five columns of cards below" width="100%"></p>
 
+## Model panel: several AIs on one hard question (2.2, optional)
+
+For decisions that are costly to get wrong, Claude can gather independent opinions from the AI models **you already have** and decide
+with you on checked facts. It is offered at install — **you decide** whether you want it; a silent install leaves it off.
+
+- **Who can sit on the panel:** Claude's own subagents of other models (always there, nothing leaves your machine); command-line tools
+  found on your computer — Codex CLI (also inside the Codex app's folder), Gemini CLI, Qwen Code, `llm`; any OpenAI-compatible API whose
+  key is in your environment (OpenAI, Gemini, OpenRouter, DeepSeek, xAI, Mistral — the key is read by its variable's NAME and never
+  written anywhere); local Ollama / LM Studio; a web chat of yours by hand. `python .foreman/foreman.py panel detect` shows them.
+- **How it works:** one self-contained brief (`panel new "<topic>"`) → every member answers independently, in parallel, each into its
+  own file (`panel run <folder>`; one member can be given the critic's role, `--stance codex=против`) → optionally a second round where
+  each sees the others' answers without names and names their errors (`panel review`) → Claude checks every claim against your code and
+  writes `DECISION.md`: verified facts, what all agree on, where they differ and what was chosen, what each member gave.
+- **Safeguards:** a brief that looks like it carries a key, a password or an e-mail is never sent; before the brief leaves your machine
+  Claude asks you (`panel.ask_each_time`); members are only those you left switched on (`panel.members`); a member that fails or times
+  out never stops the others.
+- Switch on later: `install.py <project> --modules promises,lessons,panel` (or `"panel": true` in `config.json → modules`).
+
 ## Who checks the checker (2.1)
 
 - **«Accepted» only with your words.** Foreman logs your messages verbatim (`.foreman/owner.jsonl`); `set P-007 status=accepted` and
@@ -361,6 +379,7 @@ In Windows PowerShell 5.1 the quotes inside a JSON argument get stripped: put th
 | `lessons.confirm_days` | `60` | an active rule unconfirmed for longer is listed in the brief (`0` = never) |
 | `board` | `{"port": 8765, "poll_s": 3, "registries": []}` | the board's port, its refresh period, external registries (kind `cli`: `cmd`, `statuses`, `write_status`, `priorities`, `states`, `tags_from_status`) |
 | `lessons.edit_gate` / `lessons.guard_paths` | `"on"` / `[]` | the edit gate; regexes of your own files it guards too |
+| `panel` | `{"ask_each_time": true, "timeout_s": 600, "members": [...]}` | the model panel (module `panel`, off by default): ask before a brief leaves the machine, a member's time limit, the members found at install (edit `enabled`, `model`, or add your own `cli` / `api` / `manual` member) |
 | `accept_days` | `14` | how old the owner's words may be for an acceptance |
 | `lessons.memory_dir` | `"auto"` | Claude Code's memory folder (read-only); `auto` finds `~/.claude/projects/<project>/memory` |
 
