@@ -75,7 +75,7 @@ Three Claude Code hooks do the bookkeeping, so neither you nor Claude has to rem
   <img src="assets/infographic-proof.svg" alt="A promise card: the owner's quote, three probes (two pass, one fails), status partly; the lifecycle from todo to accepted; regressions flagged red; control probes must fail." width="100%">
 </p>
 
-A promise is kept when its probes turn green. Six kinds of probes cover most of what "built" means:
+A promise is kept when its probes turn green. Seven kinds of probes cover most of what "built" means:
 
 | Probe | Turns green when | Example |
 |---|---|---|
@@ -85,8 +85,16 @@ A promise is kept when its probes turn green. Six kinds of probes cover most of 
 | `doc:file:word` | a word appears in the docs (any case) | `doc:docs/api.md:export` |
 | `get:url` | an HTTP GET answers below 400. A server that is down counts as "not checked", never as "not built" | `get:http://localhost:8000/health` |
 | `cmd:command` | a shell command exits with 0. **Off by default** because it runs code; enable it with `allow_cmd` | `cmd:pytest -q tests/test_login.py` |
+| `fresh:result:glob` | the result (a test report, a build, a render) is **newer than every file** of the glob — a test counts only if it ran after the last edit (2.1) | `fresh:reports/junit.xml:src/**/*.py` |
+
+A probe that **could not run** — a server down, a timeout, no access, a broken regex, an unknown kind, `cmd:` switched off, a pattern
+that finds nothing — is **unknown**, with its reason (`check P-007` shows it), never a red "not built" and never a green. One real
+"no" outranks any unknown; green + unknown is not "done" (2.1).
 
 Statuses you (or Claude, on your word) set by hand: `todo` · `doing` · `waiting` (for you) · `parked` · `accepted` (after **you** accept it) · `dropped` (only on your word). "Done" is never one of them: the probes decide.
+An acceptance covers *that* quote with *those* probes: change either afterwards and the item goes back to `doing` (`accept_void`), until you
+accept it again (2.1). In the terminal version of Claude Code, its own task list is guarded too: a task that names `P-…` cannot be marked
+completed while that item has a red probe (the `TaskCompleted` hook).
 
 ## Council mode: for the hard ones
 
@@ -131,6 +139,10 @@ nothing is readable"), the correction should not vanish with the session either.
   your message.
 - **A ladder for repeats:** level 0 note → 1 rule (recalled by words) → 2 hot (always in the session brief) → 3 **guard**: a probe
   checked at the end of every turn (`nogrep:README.md:TODO`). A guard that turns red blocks once; one red from the start never locks you out.
+- **Rules age honestly (2.1).** Accepting a rule stamps the date; the session brief lists active rules nobody confirmed for
+  `lessons.confirm_days` (60) — `rule confirm R-003` or `rule replace R-003 --by R-007` (a replaced rule is kept, marked, and no longer
+  recalled). A lesson may also be put off with a reason — «отложено: …» / "deferred: …" passes the Stop gate, is logged once and counted
+  in the brief (`cues --deferred`).
 - **Measured, not hoped.** Each rule keeps the message it came from (and optionally one it must NOT fire on); `recall --eval` reports
   recall@3 and false positives on your own project.
 - **Works with Claude Code's own memory.** Foreman reads it (and `CLAUDE.md`, your skills) as a source and never writes there: your rulings go
@@ -158,7 +170,7 @@ of three models (Claude Fable, Gemini, GPT) on 4 November 2026.
 |---|---|---|---|---|
 | Captures your requests automatically | ✅ every message, via a hook | ➖ Claude builds its own list from a plan | ➖ tasks generated from a PRD | ➖ tasks created via CLI or MCP |
 | Keeps your exact words | ✅ verbatim quote in every item | ❌ Claude's own wording | ❌ generated wording | ➖ whatever was typed in |
-| "Done" is proven by machine checks | ✅ six probe types | ❌ set by the agent | ❌ set by the agent or you | ❌ set by the agent or you |
+| "Done" is proven by machine checks | ✅ seven probe types | ❌ set by the agent | ❌ set by the agent or you | ❌ set by the agent or you |
 | The checker verifies itself | ✅ control probes must fail | ❌ | ❌ | ❌ |
 | Restores open work after compaction | ✅ automatic, `SessionStart` hook | ➖ within its own session | ➖ when the agent queries it | ➖ when the agent reads it |
 | Flags regressions in accepted work | ✅ RED in the next brief | ❌ | ❌ | ❌ |
@@ -287,6 +299,9 @@ python .foreman/foreman.py round P-007 '{"tried": ["L","A","B"], "winner": "B", 
 python .foreman/foreman.py recall send a comparison of variants       # the rules that fit what you are about to do
 python .foreman/foreman.py rule add '{"when": "…", "do": "…", "quote": "…", "keys": "…"}' --situation "the owner's message"
 python .foreman/foreman.py rule accept R-003      # the owner's word: proposed → active
+python .foreman/foreman.py rule confirm R-003     # still true (the brief lists rules unconfirmed for 60 days)
+python .foreman/foreman.py rule replace R-003 --by R-007                 # stopped being true: kept, marked, not recalled
+python .foreman/foreman.py cues --deferred        # lessons put off with «отложено: …»
 python .foreman/foreman.py rule set R-003 hot=true                     # level 2: always in the brief (active rules only)
 python .foreman/foreman.py rule set R-003 guard=nogrep:README.md:TODO level=3
 python .foreman/foreman.py recall --eval          # recall@3 and false positives on your own cases
@@ -312,6 +327,7 @@ In Windows PowerShell 5.1 the quotes inside a JSON argument get stripped: put th
 | `lessons.rules_extra` | `[]` | globs of an existing rule book (markdown tables / `###` sections) to search read-only; a book with laws (`### P1 · …` sections, rows tagged `[P1]`) gets the law layer: the rows of the law the situation falls under rank higher |
 | `lessons.record_paths` | `[]` | regexes of your own files whose edit also counts as a lesson record at the Stop gate (e.g. your rule book) |
 | `lessons.record_hint` | `""` | where a lesson is written in this project (e.g. "a row in docs/rules/<area>.md"); the lesson note and the Stop gate then point there instead of `rule add` |
+| `lessons.confirm_days` | `60` | an active rule unconfirmed for longer is listed in the brief (`0` = never) |
 | `lessons.memory_dir` | `"auto"` | Claude Code's memory folder (read-only); `auto` finds `~/.claude/projects/<project>/memory` |
 
 ## Uninstall
