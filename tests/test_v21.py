@@ -275,6 +275,8 @@ try:
     check('edits of ANOTHER project\'s .foreman (a test copy) are not this project\'s checks → pass', o == {}, o)
     o = hook(proj, 'stop', {'transcript_path': turn(('Bash', {'command': f'S="{proj}"; cp a.json "$S/.foreman/promises.jsonl"'}))})
     check('…but the same command aimed at THIS project → block', o.get('decision') == 'block', o)
+    o = hook(proj, 'stop', {'transcript_path': turn(('Bash', {'command': f'S="{base}"; P="$S/other_project"; cd "$P" && F="python .foreman/foreman.py" && echo x > .foreman/promises.jsonl'}))})
+    check('a relative .foreman path after `cd` to another project → pass', o == {}, o)
     o = hook(proj, 'stop', {'transcript_path': turn(('Bash', {'command': "python -c \"open('.foreman/promises.jsonl','w').write('')\""}))})
     check('a python one-liner writing promises.jsonl → block', o.get('decision') == 'block', o)
     tl = os.path.join(base, 'last.jsonl')

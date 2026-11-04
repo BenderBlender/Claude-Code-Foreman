@@ -689,11 +689,23 @@ ASSIGN = re.compile(r'(?:^|[\s;&(])([A-Za-z_]\w*)=(?:"([^"]*)"|\'([^\']*)\'|([^\
 
 
 def _expand(c):
-    """$NAME / ${NAME} from the command's own assignments (S="C:/x"; cp a "$S/.foreman/") and the environment"""
+    """$NAME / ${NAME} from the command's own assignments, in order (S="C:/x"; P="$S/y"; cp a "$P/.foreman/") and the environment"""
     env = dict(os.environ)
+    sub = lambda t: re.sub(r'\$\{?([A-Za-z_]\w*)\}?', lambda m: env.get(m.group(1), m.group(0)), t)   # noqa: E731
     for m in ASSIGN.finditer(c):
-        env[m.group(1)] = next(g for g in m.groups()[1:] if g is not None)
-    return re.sub(r'\$\{?([A-Za-z_]\w*)\}?', lambda m: env.get(m.group(1), m.group(0)), c)
+        env[m.group(1)] = sub(next(g for g in m.groups()[1:] if g is not None))
+    return sub(c)
+
+
+CD = re.compile(r'\bcd\s+(?:/d\s+)?(?:"([^"]+)"|\'([^\']+)\'|([^\s&;|]+))')
+
+
+def _here_is_elsewhere(c, i):
+    """the last `cd` before position i went to a folder outside this project — a relative path there is not this project's"""
+    last = None
+    for m in CD.finditer(c[:i]):
+        last = next(g for g in m.groups() if g is not None)
+    return bool(last) and _elsewhere(last)
 
 
 def _elsewhere(path):
@@ -742,7 +754,10 @@ def edit_gate(transcript_path, last_msg=''):
                 c = _expand(COMMIT_MSG.sub(' git commit ', str(inp.get('command') or '')))   # (a commit message NAMING the board is no edit)
                 plain = ENGINE_CALL.sub(' ', c)              # (the engine's own commands write through its checks — not an edit)
                 hits = [h for rx in [EDIT_FILE] + guard for h in rx.finditer(plain)]
-                names = any(not _elsewhere(_token_before(plain, h.start())) for h in hits)
+                def outside(h):                          # (an absolute path by itself; a relative one by the last `cd` before it)
+                    tok = _token_before(plain, h.start()).strip('"\'').replace('\\', '/')
+                    return _elsewhere(tok) if re.match(r'^(?:[A-Za-z]:/|/)', tok) else _here_is_elsewhere(plain, h.start())
+                names = any(not outside(h) for h in hits)
                 shell = EDIT_SHELL.search(c)
                 if shell and 'install' in shell.group(0).lower():   # (the kit's installer run on a test copy elsewhere)
                     target = re.search(r'install\.py["\']?\s+["\']?([^"\'\s]+)', c)

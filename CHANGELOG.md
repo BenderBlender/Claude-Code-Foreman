@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.2 — 2026-11-04
+
+- Edit gate: a relative `.foreman/…` path after a `cd` to another project is that project's (variables expanded in order: `S=…; P="$S/x"; cd "$P"`). Tests: v21 49.
+
 ## 2.2.1 — 2026-11-04 · The review's last items
 
 - Panel: Ollama through its own `/api/chat` with `num_ctx` (32768 by default — its OpenAI-compatible address cannot set the context, a
