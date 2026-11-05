@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.3 — 2026-11-05 · What Claude was shown, and a replay of the owner's messages
+
+Two ideas from DeepSeek Harness (github.com/deepseek-ai/deepseek-harness, read 05.11: `AGENTS.md`, `docs/testing.md`):
+- **«Model-visible means logged».** Every line a hook puts in front of Claude — the prompt hook's context, the session brief, a Stop
+  block, a TaskCompleted refusal — is written to `.foreman/events.jsonl` (`kind: hook_out`, the hook, its characters, the text, the head
+  of the message it answered). `foreman.py hooklog [--n] [--hook] [--grep]` reads it back: «why did Claude do that» is answered from
+  the log. An ordinary message with no output writes nothing; only the oldest `hook_out` rows are pruned past 3 MB (the owner's board
+  moves are kept); `"hook_log": false` switches it off.
+- **Replay of the recorded messages.** `foreman.py replay` runs the owner's messages (`owner.jsonl`) through the prompt hook's detectors
+  — the ask cues and the lessons classifier — with NO side effects, and compares them with a saved snapshot (`replay --save` →
+  `.foreman/replay_baseline.json`): a cue or lexicon edit that changes how a PAST message reads («was a correction, now nothing» = a
+  lost lesson; «was nothing, now an ask» = a new false alarm) is listed before it misleads a session; exit 1 when anything changed.
+  Messages newer than the snapshot are counted, not called changes.
+- Not taken: scheduled re-checks of the probes (their RFC 5545 schedule package) — on Windows it needs a persistent system scheduler,
+  so it stays the owner's decision. Already had: `blocked_by`, owner commands without a model turn.
+- Tests: v23 17; `test_panel.py`'s `alive()` reads `tasklist` as bytes (a Russian console's OEM code page made stdout None).
+
 ## 2.2.2 — 2026-11-04
 
 - Edit gate: a relative `.foreman/…` path after a `cd` to another project is that project's (variables expanded in order: `S=…; P="$S/x"; cd "$P"`). Tests: v21 49.

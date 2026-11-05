@@ -357,6 +357,12 @@ python .foreman/foreman.py cues --deferred        # lessons put off with «от�
 python .foreman/foreman.py rule set R-003 hot=true                     # level 2: always in the brief (active rules only)
 python .foreman/foreman.py rule set R-003 guard=nogrep:README.md:TODO level=3
 python .foreman/foreman.py recall --eval          # recall@3 and false positives on your own cases
+
+# what Claude was shown, and a regression check of the detectors (2.3)
+python .foreman/foreman.py hooklog --n 20         # every line a hook put in front of Claude, and the message it answered
+python .foreman/foreman.py hooklog --hook stop    # only the Stop blocks; --grep WORD to search
+python .foreman/foreman.py replay --save          # snapshot: how the detectors read your recorded messages (owner.jsonl)
+python .foreman/foreman.py replay                 # after a cue / lexicon edit: which PAST messages now read differently (exit 1)
 ```
 In Windows PowerShell 5.1 the quotes inside a JSON argument get stripped: put the JSON in a file and pass `@rule.json`.
 

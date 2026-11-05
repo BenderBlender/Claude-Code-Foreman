@@ -524,6 +524,27 @@ def append_event(row):
         f.write(json.dumps({'ts': dt.datetime.now().isoformat(timespec='seconds'), 'by': 'foreman', **row}, ensure_ascii=False) + '\n')
 
 
+HOOK_LOG_KEEP = 2000                                         # (hook_out rows kept; the rest of events.jsonl is never pruned)
+
+
+def log_hook(hook, text, **extra):
+    """2.3 (deepseek-harness AGENTS.md: «Model-visible means logged»): every line a hook puts in front of Claude — or a stop it makes
+    — becomes a durable event, so «why did Claude do that» is answered from the log, not from memory; `foreman.py hooklog` reads it.
+    An ordinary message (no output) costs nothing. Off with config.json `"hook_log": false`."""
+    if not text or CFG.get('hook_log') is False:
+        return
+    try:
+        append_event({'kind': 'hook_out', 'hook': hook, 'chars': len(text), 'text': text[:4000], **extra})
+        if os.path.getsize(EVENTS) > 3_000_000:              # (only the oldest hook_out rows go; the owner's board moves stay)
+            rows = jsonl(EVENTS)
+            hk = [n for n, r in enumerate(rows) if r.get('kind') == 'hook_out']
+            drop = set(hk[:-HOOK_LOG_KEEP]) if len(hk) > HOOK_LOG_KEEP else set()
+            if drop:
+                write_jsonl(EVENTS, [r for n, r in enumerate(rows) if n not in drop])
+    except OSError:
+        pass
+
+
 def owner_events():
     """the owner's unseen moves on the board (2.1) → one line, ≤ 300 chars, grouped by item, statuses in the registry's words;
     marked seen in the same call (DESIGN_board §3)"""
@@ -606,6 +627,7 @@ def hook_prompt(inp):
             pk = R.pack(cls['text'][:600])
     text = fit([events, note, reflect, pk], CFG['budget']['prompt_chars'])
     if text:
+        log_hook('prompt', text, head=prompt[:120])
         _emit({'hookSpecificOutput': {'hookEventName': 'UserPromptSubmit', 'additionalContext': text}})
 
 
@@ -682,6 +704,7 @@ def hook_task(inp):
             if state in ('not', 'partly'):
                 bad.append(L['task_red'].format(id=pid, probes='; '.join(p for p, v in res if v is False)[:300]))
     if bad:
+        log_hook('task', '\n'.join(bad)[:1500], ids=ids)
         sys.stderr.write('\n'.join(bad)[:1500] + '\n')
         return 2
     return 0
@@ -709,6 +732,7 @@ def hook_stop(inp):
         reasons.append(R.guard_reason(newly))
     text = fit(reasons, 1200)
     if text:
+        log_hook('stop', text)
         _emit({'decision': 'block', 'reason': text})
 
 
@@ -745,6 +769,7 @@ def hook_session(inp):
         text = L['compact'] + '\n' + text
     text = fit([text[:1200]] + lessons_lines() + [owner_events() if CFG['modules'].get('board') else ''], CFG['budget']['session_chars'])
     if text:
+        log_hook('session', text, source=inp.get('source'))
         _emit({'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': text}})
 
 
@@ -866,10 +891,88 @@ def main(a):
             it['touched'] = today()
             write_jsonl(REG, reg)
         print(L['commented'].format(id=a[1])); return 0
+    if a[:1] == ['hooklog']:
+        return hooklog_cmd(a[1:])
+    if a[:1] == ['replay']:
+        return replay_cmd(a[1:])
     if a[:1] in (['add'], ['set'], ['take'], ['skip'], ['round']):
         with locked():
             return commands(a)
     return commands(a)
+
+
+def hooklog_cmd(a):
+    """foreman.py hooklog [--n 20] [--hook prompt|stop|session|task] [--grep TEXT] — what the hooks showed Claude, newest last (2.3)"""
+    n = int(a[a.index('--n') + 1]) if '--n' in a else 20
+    hook = a[a.index('--hook') + 1] if '--hook' in a else None
+    pat = a[a.index('--grep') + 1].lower() if '--grep' in a else None
+    rows = [r for r in jsonl(EVENTS) if r.get('kind') == 'hook_out' and (not hook or r.get('hook') == hook)
+            and (not pat or pat in str(r.get('text', '')).lower() or pat in str(r.get('head', '')).lower())]
+    for r in rows[-n:]:
+        head = f" <- «{str(r['head'])[:70]}»" if r.get('head') else ''
+        print(f"{r.get('ts')} {r.get('hook')} {r.get('chars')} ch{head}")
+        print('  ' + str(r.get('text', '')).replace('\n', '\n  ')[:900])
+    print(f'{len(rows)} hook outputs logged' + (f' (showing the last {min(n, len(rows))})' if rows else ''))
+    return 0
+
+
+REPLAY = os.path.join(HERE, 'replay_baseline.json')
+
+
+def replay_classify(text):
+    """the SAME detectors the prompt hook runs, with no side effects (no inbox row, no cue event, no owner log)"""
+    t = re.sub(r'<system-reminder[^>]*>[\s\S]*?</system-reminder[^>]*>', '', str(text or '')).strip()
+    if not t or AGENT_NOTE.match(t) or SHORT.match(t) or len(t) < 12:
+        return None
+    low = t.lower()
+    cues = ASK['ru'] + ASK['en'] + list(CFG.get('extra_ask_cues') or [])
+    ask = next((c for c in cues if re.search(c, low)), None)
+    R = lessons()
+    cls = R.classify(t) if R else {'correction': None, 'teaching': None}
+    return {'ask': ask, 'correction': cls.get('correction'), 'teaching': cls.get('teaching')}
+
+
+def replay_cmd(a):
+    """foreman.py replay [--save] [--show] — 2.3 (deepseek-harness docs/testing.md: a recorded session «serves as the expected
+    persisted result»): the owner's recorded messages (owner.jsonl) through the prompt hook's detectors, compared with the saved
+    snapshot (replay_baseline.json). A cue or lexicon edit that changes how a PAST message is read shows up here before it misleads a
+    session: «was a correction, now is not» = a lost lesson; «was nothing, now an ask» = a new false alarm. --save writes the snapshot
+    (after you accept the changes); exit 1 when something changed against it."""
+    import hashlib
+    now = {}
+    for m in jsonl(OWNER):
+        c = replay_classify(m.get('text'))
+        if c is None:
+            continue
+        k = hashlib.sha1(str(m.get('text')).encode('utf-8')).hexdigest()[:12]
+        now[k] = dict(c, ts=m.get('ts'), head=str(m.get('text'))[:90].replace('\n', ' '))
+    count = lambda d, f: sum(1 for v in d.values() if v.get(f))
+    print(f"{len(now)} owner messages replayed: asks {count(now, 'ask')}, corrections {count(now, 'correction')}, "
+          f"teachings {count(now, 'teaching')}")
+    if '--show' in a:
+        for v in now.values():
+            tags = ', '.join(f'{f}: {v[f]}' for f in ('ask', 'correction', 'teaching') if v.get(f))
+            print(f"  {v['ts']} «{v['head']}» — {tags or '-'}")
+    if '--save' in a:
+        json.dump(now, io.open(REPLAY, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        print('snapshot saved:', REPLAY)
+        return 0
+    if not os.path.exists(REPLAY):
+        print('no snapshot yet — run `foreman.py replay --save` once the classification looks right')
+        return 0
+    base = json.load(io.open(REPLAY, encoding='utf-8'))
+    changed = 0
+    for k, v in now.items():
+        b = base.get(k)
+        if not b:
+            continue                                         # (a message newer than the snapshot: nothing to compare)
+        diffs = [f"{f}: {b.get(f) or '-'} -> {v.get(f) or '-'}" for f in ('ask', 'correction', 'teaching') if bool(b.get(f)) != bool(v.get(f))]
+        if diffs:
+            changed += 1
+            print(f"  CHANGED {v['ts']} «{v['head']}»: " + '; '.join(diffs))
+    new = sum(1 for k in now if k not in base)
+    print(f'{changed} changed against the snapshot, {new} new message(s) not in it' + (' — `--save` to extend it' if new else ''))
+    return 1 if changed else 0
 
 
 def commands(a):

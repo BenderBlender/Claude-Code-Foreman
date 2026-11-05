@@ -62,8 +62,10 @@ def shim(bindir, name, *args):
 
 def alive(pid):
     if os.name == 'nt':
-        r = subprocess.run(['tasklist', '/FI', f'PID eq {pid}'], capture_output=True, text=True)
-        return str(pid) in r.stdout
+        # (bytes: on a Russian Windows tasklist prints in the console's OEM code page — text=True decoded it with the ANSI one,
+        #  the reader thread failed and stdout came back None; 2.3)
+        r = subprocess.run(['tasklist', '/FI', f'PID eq {pid}'], capture_output=True)
+        return str(pid) in (r.stdout or b'').decode('cp866', 'replace')
     try:
         os.kill(pid, 0)
         return True
