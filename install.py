@@ -3,6 +3,9 @@
 
   python install.py [PROJECT_DIR] [--lang ru|en] [--modules promises,lessons] [--yes]   install (or update — your data is kept)
                                                                   --modules: promises (the asks), lessons (the rules, 2.0); both by default
+                                                                  2.4: contract (a subagent's output file is checked), rules_paths
+                                                                  (rules with paths: .claude/rules + the edit hook) — both on by default;
+                                                                  a --modules list names EVERY module wanted (the rest are off)
   python install.py [PROJECT_DIR] --uninstall [--purge] [--yes]   remove the hooks, the agent and the CLAUDE.md section;
                                                                   --purge also moves .foreman/ aside (.foreman_removed_<time>), never deletes
 Windows: double-click install.bat (or drag the project folder onto it). macOS / Linux: ./install.sh
@@ -43,6 +46,9 @@ TXT = {
            'panel_found': 'Консилиум моделей (2.2): на важные решения Claude может собирать мнения нескольких нейросетей — тех, что у вас есть. Найдено:',
            'panel_none': '  внешних нейросетей не найдено (Codex / Gemini / Qwen CLI, ключи OPENAI_API_KEY / GEMINI_API_KEY / OPENROUTER_API_KEY…, Ollama, LM Studio); субагенты Claude других моделей есть всегда',
            'panel_ask': 'Включить консилиум моделей? Бриф уходит выбранным нейросетям; перед каждой отправкой Claude спросит вас. [д/н] ',
+           'contract_rule': ('{n}. **Задание субагенту — с файлом результата.** Бриф агенту, который должен что-то записать, кончается строкой '
+                             '«Файл результата: `путь`». Прораб проверит файл, когда агент остановится: нет файла → агент продолжит и запишет; '
+                             'если так и не записал — вам скажут «этап НЕ сделан»: продолжите ТОГО ЖЕ агента (SendMessage), не запускайте нового.'),
            'panel_rule': ('10. **Важное, дорогое решение → консилиум моделей** (модуль panel, его включил владелец). Навык `foreman-panel`: один бриф '
                           'без секретов → независимые ответы (`python .foreman/foreman.py panel run …` + свои субагенты других моделей) → проверка '
                           'утверждений → `DECISION.md` → владельцу до сборки. Перед отправкой брифа наружу — спросить владельца.'),
@@ -74,6 +80,9 @@ TXT = {
            'panel_found': 'Model panel (2.2): for important decisions Claude can gather the opinions of several AI models — the ones you have. Found:',
            'panel_none': '  no outside models found (Codex / Gemini / Qwen CLI, keys OPENAI_API_KEY / GEMINI_API_KEY / OPENROUTER_API_KEY…, Ollama, LM Studio); Claude\'s own subagents of other models are always there',
            'panel_ask': 'Switch the model panel on? The brief goes to the chosen models; Claude asks you before each sending. [y/n] ',
+           'contract_rule': ('{n}. **A brief to a subagent names its output file.** A brief for an agent that must write something ends with '
+                             '«Output file: `path`». Foreman checks the file when the agent stops: missing → the agent goes on and writes it; '
+                             'still missing → you are told «the phase is NOT done»: resume THE SAME agent (SendMessage), do not spawn a new one.'),
            'panel_rule': ('10. **An important, costly decision → the model panel** (module panel, switched on by the owner). Skill `foreman-panel`: one '
                           'brief without secrets → independent answers (`python .foreman/foreman.py panel run …` + own subagents of other models) → '
                           'check the claims → `DECISION.md` → to the owner before building. Ask the owner before the brief leaves the machine.'),
@@ -139,7 +148,7 @@ def stamp():
     return dt.datetime.now().strftime('%Y%m%d_%H%M%S')
 
 
-def hooks_block(proj, promises=True):
+def hooks_block(proj, promises=True, contract=True, rules_paths=True):
     py = sys.executable.replace('\\', '/')
     fm = os.path.join(proj, '.foreman', 'foreman.py').replace('\\', '/')
     cmd = lambda mode: f'"{py}" "{fm}" hook {mode}'           # noqa: E731
@@ -147,7 +156,15 @@ def hooks_block(proj, promises=True):
             'Stop': [{'hooks': [{'type': 'command', 'command': cmd('stop'), 'timeout': 10}]}],
             'SessionStart': [{'matcher': 'startup|resume|compact', 'hooks': [{'type': 'command', 'command': cmd('session'), 'timeout': 30}]}],
             # (the CLI's own task list: a task naming P-… closes only without red probes — 2.1)
-            **({'TaskCompleted': [{'hooks': [{'type': 'command', 'command': cmd('task'), 'timeout': 30}]}]} if promises else {})}
+            **({'TaskCompleted': [{'hooks': [{'type': 'command', 'command': cmd('task'), 'timeout': 30}]}]} if promises else {}),
+            # (2.4: the subagent contract — a brief's «Файл результата: `…`» must exist when the subagent stops; the parent hears it)
+            **({'SubagentStop': [{'hooks': [{'type': 'command', 'command': cmd('subagent'), 'timeout': 10}]}],
+                'SubagentStart': [{'hooks': [{'type': 'command', 'command': cmd('subagent-start'), 'timeout': 10}]}],
+                'PostToolUse': [{'matcher': 'Agent|Task', 'hooks': [{'type': 'command', 'command': cmd('agent-done'), 'timeout': 10}]}]}
+               if contract else {}),
+            # (2.4: a rule whose paths lie OUTSIDE the project — shown before an edit of a matching file; inside → .claude/rules)
+            **({'PreToolUse': [{'matcher': 'Edit|Write|MultiEdit|NotebookEdit',
+                                'hooks': [{'type': 'command', 'command': cmd('edit'), 'timeout': 10}]}]} if rules_paths else {})}
 
 
 def strip_ours(settings):
@@ -170,7 +187,7 @@ def strip_ours(settings):
     return settings
 
 
-def claude_section(proj, lang, remove=False, promises=True, hint='', panel=False):
+def claude_section(proj, lang, remove=False, promises=True, hint='', panel=False, contract=False):
     p = os.path.join(proj, 'CLAUDE.md')
     s = io.open(p, encoding='utf-8').read() if os.path.exists(p) else ''
     if (START in s) != (END in s):                          # (one mark without the other: never guess where the section ends)
@@ -191,6 +208,8 @@ def claude_section(proj, lang, remove=False, promises=True, hint='', panel=False
                              if l[:3] == '9. ' else l for l in sec.splitlines())
         if panel:
             sec += '\n' + TXT[lang]['panel_rule']
+        if contract:                                        # (2.4: the subagent contract — the marker the hook looks for)
+            sec += '\n' + TXT[lang]['contract_rule'].format(n=11 if panel else 10)
         s = (s.rstrip('\n') + '\n\n' if s.strip() else '') + START + '\n' + sec + '\n' + END + '\n'
     if s.strip() or os.path.exists(p):
         io.open(p, 'w', encoding='utf-8', newline='\n').write(s)
@@ -271,9 +290,10 @@ def install(proj, lang, yes_all, modules=None):
     cfg = read_json(os.path.join(fdir, 'config.json'), {})
     cfg = {'lang': lang, 'stale_days': 3, 'allow_cmd': False, 'orphans': {'candidates': [], 'corpus': []}, 'extra_ask_cues': [], **cfg, 'lang': lang}
     cfg['council'] = {'candidates': 2, 'max_rounds': 3, 'stop_after': 2, **(cfg.get('council') or {})}
-    cfg['modules'] = {'promises': True, 'lessons': True, 'board': False, 'panel': False, **(cfg.get('modules') or {})}
+    cfg['modules'] = {'promises': True, 'lessons': True, 'board': False, 'panel': False, 'contract': True, 'rules_paths': True,
+                      **(cfg.get('modules') or {})}
     if modules is not None:
-        cfg['modules'] = {m: m in modules for m in ('promises', 'lessons', 'board', 'panel')}
+        cfg['modules'] = {m: m in modules for m in ('promises', 'lessons', 'board', 'panel', 'contract', 'rules_paths')}
     cfg['panel'] = {'ask_each_time': True, 'timeout_s': 600, 'members': [], **(cfg.get('panel') or {})}
     cfg['board'] = {'port': 8765, 'poll_s': 3, 'token_file': '', 'registries': [], **(cfg.get('board') or {})}
     cfg['budget'] = {'prompt_chars': 1200, 'session_chars': 2000, 'recall_hits': 3, 'recall_chars': 700, 'hot_rows': 5, **(cfg.get('budget') or {})}
@@ -310,11 +330,14 @@ def install(proj, lang, yes_all, modules=None):
         out(L['backup'].format(p=bk))
     settings = strip_ours(read_json(sp, {}))
     hooks = settings.setdefault('hooks', {})
-    for ev, groups in hooks_block(proj, cfg['modules'].get('promises', True)).items():
+    for ev, groups in hooks_block(proj, cfg['modules'].get('promises', True), cfg['modules'].get('contract', True),
+                                  cfg['modules'].get('rules_paths', True)).items():
         hooks.setdefault(ev, []).extend(groups)
     write_json(sp, settings)
+    if cfg['modules'].get('rules_paths', True) and cfg['modules'].get('lessons', True):   # (the active rules with paths → .claude/rules)
+        subprocess.run([sys.executable, os.path.join(fdir, 'foreman.py'), 'rules', 'export'], capture_output=True)
     claude_section(proj, lang, promises=cfg['modules'].get('promises', True), hint=str(cfg['lessons'].get('record_hint') or '')[:160],
-                   panel=cfg['modules'].get('panel', False))
+                   panel=cfg['modules'].get('panel', False), contract=cfg['modules'].get('contract', True))
     out(L['done'])
     promises = cfg['modules'].get('promises', True)
     ok = selftest(proj, promises)
@@ -362,6 +385,13 @@ def uninstall(proj, purge, yes_all):
     for d in (skill, os.path.join(proj, '.claude', 'skills', 'foreman-panel'), os.path.dirname(skill), os.path.join(proj, '.claude', 'agents')):
         if os.path.isdir(d) and not os.listdir(d):
             os.rmdir(d)
+    rd = os.path.join(proj, '.claude', 'rules')               # (2.4: only the rules Foreman generated — marked in the file)
+    for name in (os.listdir(rd) if os.path.isdir(rd) else []):
+        p = os.path.join(rd, name)
+        if name.startswith('foreman-') and name.endswith('.md') and '<!-- generated by Foreman' in io.open(p, encoding='utf-8', errors='replace').read():
+            os.remove(p)
+    if os.path.isdir(rd) and not os.listdir(rd):
+        os.rmdir(rd)
     claude_section(proj, 'ru', remove=True)
     out(L['un_done'])
     fdir = os.path.join(proj, '.foreman')

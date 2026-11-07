@@ -214,6 +214,37 @@ with you on checked facts. It is offered at install — **you decide** whether y
   commands), or drove the board, is stopped once until Claude says why: «checks edited: <why>».
 - **Earlier acceptances** are marked `legacy` on the update; anything accepted around the check shows in the brief.
 
+## Proof that still holds (2.4)
+
+Three ideas from [Claude-Code-Game-Studios](https://github.com/Donchitos/Claude-Code-Game-Studios), read from its repository and
+reviewed by a second model before any code was written:
+
+- **Evidence stamps.** An acceptance now hashes what the proof stands on: a `grep:` probe's matched lines (± 2), a `doc:` probe's
+  heading section, a `file:` probe's file and the item's `evidence` (a screenshot, a report, a render — `set P-007 evidence=["shots/export.png"]`).
+  The text is normalised (line endings, BOM, trailing spaces), so a re-save or an edit elsewhere in a big shared file stays quiet.
+  When what an acceptance stood on changes later, the brief shows a yellow line — «accepted, but files changed after the acceptance:
+  P-007 (app.py: region)», «FILE GONE» for a deleted one. It is a question, not a verdict: re-check the item the way you would, then
+  `foreman.py stamp P-007 --note "how it was checked"` (only on green probes). Why: the probes say a line EXISTS; they cannot tell that
+  a finished, accepted feature was quietly re-done somewhere else. Mtime is not used — it lies under restores and sync.
+- **The subagent contract.** A brief that names its output file — ``Output file: `out/report.md` ``, «``Файл результата: `…` ``», or
+  CCGS's ``Write your full output to `…` `` — is checked when the subagent stops (`SubagentStop`). If the file is missing, the subagent
+  is stopped from stopping once, with the reason — it goes on and writes the file, its context intact. If it still is not there, the
+  main session hears «agent X stopped without its output file — the phase is NOT done; resume the same agent» (`PostToolUse` on the
+  Agent tool, or the Stop hook for a background agent). A fluent reply is not evidence that a phase ran; the file is. Agents that cannot
+  write (Explore, Plan…) are only reported, never held; Claude Code's internal agents are left alone. Module `contract`.
+- **Rules with paths.** A rule may carry `"paths": ["src/ui/**"]`. Paths inside the project become Claude Code's own path-scoped
+  rules — `.claude/rules/foreman-R-012.md`, generated and marked, following the rule's life (accept / change / drop). Paths outside
+  the project (another drive, a sibling repository — not covered by Claude Code's rules) are shown by Foreman's edit hook
+  (`PreToolUse`), once per session. Module `rules_paths`.
+
+Also: a brief line for accepted items whose probes only check that a file or a word EXISTS — or that have no probes at all («weak
+probes»); a warning when a rule states that something is ABSENT («not installed», «doesn't exist») without an `as_of` date — such a
+rule turns false with time, and recall marks it «re-check» after `lessons.absence_days` (30).
+
+One more lesson from the same repository, as a measurement: four games were built from one brief, one of them with 30 documents
+written before the first line of code; two blind reviewers and a human playtest ranked that build last. The documents bought
+traceability, not a better game. Foreman is not about paperwork: one quote, a few probes, a stamp.
+
 ## Foreman vs. the alternatives
 
 **Foreman is not another task manager.** Task managers track the work an agent plans. Foreman guards the promises *you* made, in your own words, and proves they were kept. It's the part that's missing when the plan is fine but Monday's request still disappears.

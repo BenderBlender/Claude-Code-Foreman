@@ -34,6 +34,9 @@ bring the judgments a script cannot make. You watch the building site; you do no
    - **Lessons** (when `.foreman/rules.jsonl` exists): rules waiting for the owner's «yes» (`rule list --proposed`) — list them for
      acceptance; red guards; the recall test `python .foreman/foreman.py recall --eval` (its recall@3 and false positives — write the
      number into the ledger with `foreman.py ledger "…"`); a correction in the owner's recent words with no rule.
+   - **Proof that still holds** (2.4): items in the brief's «files changed after the acceptance» line — re-check each the way its
+     user would, then `python .foreman/foreman.py stamp P-… --note "how"`; «weak probes» items — do the probes prove the QUOTE or only
+     that a file / a word exists? Propose a stronger probe (a grep of the behaviour, a `get:`, a `fresh:` result) — the owner decides.
    - **Council candidates**: a `high` item whose probes failed twice, or a decision costly to get wrong → recommend a council
      (the `foreman-council` skill, run by the main session). For a running council (items with `rounds`): report its leader and
      whether it should stop; never pick its winner yourself.

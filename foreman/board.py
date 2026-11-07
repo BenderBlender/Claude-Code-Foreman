@@ -140,7 +140,8 @@ class KitRegistry:
     def accept(self, pid, quote):
         def fn(it, rows):
             it['status'] = 'accepted'
-            it['accepted'] = {'ts': now(), 'by': 'owner-board', 'quote': quote}
+            st, _ = FM.stamp_of(it) if hasattr(FM, 'stamp_of') else (None, [])   # (2.4: the board's acceptance is stamped too — Fable 07.11)
+            it['accepted'] = {'ts': now(), 'by': 'owner-board', 'quote': quote, **({'stamp': st} if st else {})}
             it.pop('accept_void', None)
         self._write(pid, fn)
         event(self.name, 'accept', id=pid, text=quote[:120])

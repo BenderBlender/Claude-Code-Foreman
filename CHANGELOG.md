@@ -1,5 +1,36 @@
 # Changelog
 
+## 2.4 — 2026-11-07 · Proof that still holds: stamps, the subagent contract, rules with paths
+
+From Claude-Code-Game-Studios (github.com/Donchitos/Claude-Code-Game-Studios, read 07.11 from its clone: `review-receipts.sh`,
+`validate-agent-artifact.sh`, `error-recovery-protocol.md`, `.claude/rules/agent-memory.md`, `studio-tests/`, `test-evidence-review`).
+The owner: «Внедряй все полезное в Прораба … Но сначала проконсультируйся с Fable по всем правкам» — the plan was reviewed by Fable
+before any code (`Hollywood3/production/harness/foreman_v2/FABLE_2.4_review.md` in the author's project); the Claude Code facts the
+hooks rely on were checked against the docs (hooks.md, memory.md).
+- **Evidence stamps.** `accepted.stamp` — hashes of what the proof stands on, from ONE helper `stamp_of()` called by both acceptance
+  paths (the CLI and the board): `grep:` → the matched lines ± 2, `doc:` → the enclosing heading section, `file:` / `fresh:` target /
+  `evidence` → the whole file; text normalised (CRLF, BOM, trailing spaces); ≤ 20 files, ≤ 5 MB each; globs expanded only at stamp
+  time. The brief / STATUS.md: «accepted, but files changed after the acceptance» (≤ 5 ids, «FILE GONE» for a deleted one, «not in
+  the stamp» for evidence named later); `check P-…` prints the stamp. `stamp P-… --note "how"` re-stamps after a re-check (green probes
+  only; a `restamp` event; the acceptance stands). An acceptance whose `evidence` finds no file is refused. `fresh:` keeps mtime (it asks
+  order — documented). New item field `evidence` (`set P-… evidence=[…]`).
+- **The subagent contract** (module `contract`, on): `hook subagent` (SubagentStop) reads the brief — the first user message of the
+  subagent's transcript, line by line — for ``Output file: `…` ``, «``Файл результата: `…` ``», ``Write your full output to `…` ``
+  (backticked; placeholders and «e.g. / например» examples skipped). Missing → one `decision: block` (once per agent id, also when
+  `stop_hook_active` is absent); then `agent_artifact_missing`, told to the parent by `hook agent-done` (PostToolUse on Agent|Task) or the
+  Stop hook, once (append-only «seen» rows). Older than the brief → advisory only. Read-only agent types (`contract.readonly_types`)
+  never blocked; an empty agent_type (Claude Code's internal agents) silent. `hook subagent-start` logs the audit line. No registry lock.
+- **Rules with paths** (module `rules_paths`, on): a rule's `paths` inside the project → `.claude/rules/foreman-R-….md` (generated,
+  marked, re-written on `rule accept/set/drop/replace`, `foreman.py rules export`); outside the project → `hook edit` (PreToolUse on
+  Edit|Write|MultiEdit|NotebookEdit), once per session and rule (`.foreman/rules_shown.jsonl`), never blocking.
+- **Weak probes** in the brief and STATUS.md: accepted items whose probes are only `file:` / `doc:` — or none (invisible before).
+- **«A temporary absence is not a durable fact»**: `rule add` / `lesson` warn on absence wording without `as_of`; recall marks such a
+  rule «re-check» past `lessons.absence_days` (30). A narrow pattern — a bare «нет» is not one.
+- install.py: the new hooks per module; `--modules` lists every module wanted; uninstall removes only the generated rules. The CLAUDE.md
+  section: rule 3 tells about stamps, a new rule «a brief names its output file» (also for lessons-only projects).
+- Deferred to 2.5: agent lint / behaviour specs (CCGS `studio-tests`).
+- Tests: v24 49 (A 16, F 1, B 14, C 8, E 4, install 6); board +1 (the board's acceptance is stamped); lessons: the modules dict.
+
 ## 2.3 — 2026-11-05 · What Claude was shown, and a replay of the owner's messages
 
 Two ideas from DeepSeek Harness (github.com/deepseek-ai/deepseek-harness, read 05.11: `AGENTS.md`, `docs/testing.md`):

@@ -32,10 +32,20 @@ COUNCIL — for hard items, a search with a kept leader (procedure: .claude/skil
   python .foreman/foreman.py round P-007 '{"tried": ["L","A","B"], "winner": "A", "accepted": true, "why": "…"}'
   After the first logged round the item's probes and rubric are FROZEN (set refuses them without --force): the criteria are
   fixed before the search and never tailored to a candidate. «round» says when to stop: the BEST verified version wins, not the last.
-Standard library only, Python 3.8+. Made by Claude (Anthropic) with a film producer, 2026-11-01 (2.0 — 2026-11-04) — see README.md."""
+PROOF THAT STILL HOLDS (2.4):
+  python .foreman/foreman.py set P-007 evidence='["shots/export.png"]'   the files the proof is (a screenshot, a report, a render)
+  An acceptance stamps the probes' files and the evidence (sha256 of normalised text: grep → its lines ± 2, doc → its section);
+  the brief shows «accepted, but files changed after the acceptance»; after a re-check: stamp P-007 --note "how it was checked".
+  hook subagent | subagent-start | agent-done   a brief's «Файл результата: `path`» / «Output file: `path`» must exist when the
+                                                subagent stops (one block, then the parent is told) — module «contract»
+  hook edit · rules export                      a rule's "paths": inside the project → .claude/rules/foreman-R-….md; outside → shown
+                                                before an edit of a matching file, once per session — module «rules_paths»
+Standard library only, Python 3.8+. Made by Claude (Anthropic) with a film producer, 2026-11-01 (2.0 — 2026-11-04, 2.4 — 2026-11-07) — see README.md."""
 import contextlib
 import datetime as dt
+import fnmatch
 import glob
+import hashlib
 import io
 import json
 import os
@@ -108,6 +118,19 @@ T = {
            'bad_round': 'раунд — JSON-объект: "tried": [метки] и "accepted": true/false (при true — ещё "winner"); можно @файл.json',
            'stopped': 'Консилиум по {id} уже остановлен ({n} раунд(ов)). Новый раунд — только с --force и по слову владельца.',
            'guarded': 'Поле «{k}» ведёт сам Прораб; менять — только с --force (и тогда rounds — JSON-список).',
+           'stamp_line': 'Принято, но файлы менялись после приёмки — перепроверить и поставить печать заново (stamp P-… --note «как проверено»): {list}',
+           'stamp_gone': 'НЕТ ФАЙЛА', 'stamp_kind': {'file': 'файл', 'grep': 'область', 'doc': 'раздел', 'new': 'не в печати'},
+           'stamp_ok': 'Печать {id}: {n} файл(ов){skip}', 'stamp_skip': ', пропущено {n} (больше 5 МБ или сверх 20)',
+           'stamp_red': 'Печать ставится только на зелёные пробы: {id} — {state}. Сначала доделать или проверить.',
+           'stamp_empty': 'Доказательство (evidence) не нашлось: {globs} — приёмка с печатью невозможна. Поправьте evidence (set {id} evidence=[…]) или уберите его.',
+           'stamp_none': '{id}: печати нет (принято до 2.4) — после проверки: stamp {id} --note «как проверено»',
+           'stamp_same': '{id}: печать совпадает с файлами',
+           'weak': 'Принято, но пробы слабые (только наличие файла / слова — или проб нет): {list}',
+           'agent_block': 'ПРОРАБ: в задании назван файл результата `{path}` — его нет. Запиши результат в этот файл (или ответь, почему записать не можешь): без файла этап не считается сделанным.',
+           'agent_missing': 'ПРОРАБ: агент {agent} остановился без файла результата `{path}` — этап НЕ сделан. Продолжите того же агента (SendMessage), а не запускайте нового.',
+           'agent_old': 'ПРОРАБ: агент {agent} не обновил `{path}` (файл старше задания) — проверьте, что результат свежий.',
+           'rule_paths': 'ПРОРАБ·правило для этого файла {id}: {when} → {do}',
+           'rules_export': 'Правила с путями → .claude/rules: записано {n}, убрано {m}{far}', 'rules_far': ', вне проекта (их покажет хук правки): {n}',
            'bad_json': 'не JSON: {err}'},
     'en': {'head': 'FOREMAN ({when}; registry .foreman/promises.jsonl): {n} items · by probes done {ok} · partly {part} · not {no}{unk} · waiting for you {wait}',
            'unk': ' · unknown {n} (a probe could not run: check P-…)', 'doing': 'In progress', 'next': 'Next by priority',
@@ -152,6 +175,19 @@ T = {
            'bad_round': 'a round is a JSON object: "tried": [labels] and "accepted": true/false (with true also "winner"); @file.json works',
            'stopped': 'The council on {id} has stopped ({n} round(s)). A new round only with --force and on the owner\'s word.',
            'guarded': 'Foreman keeps the field «{k}» itself; change it only with --force (and then rounds is a JSON list).',
+           'stamp_line': 'Accepted, but files changed after the acceptance — re-check and stamp again (stamp P-… --note "how it was checked"): {list}',
+           'stamp_gone': 'FILE GONE', 'stamp_kind': {'file': 'file', 'grep': 'region', 'doc': 'section', 'new': 'not in the stamp'},
+           'stamp_ok': 'Stamp {id}: {n} file(s){skip}', 'stamp_skip': ', {n} skipped (over 5 MB or past 20)',
+           'stamp_red': 'A stamp goes only on green probes: {id} — {state}. Finish or check it first.',
+           'stamp_empty': 'The evidence was not found: {globs} — no acceptance with a stamp. Fix the evidence (set {id} evidence=[…]) or remove it.',
+           'stamp_none': '{id}: no stamp (accepted before 2.4) — after a check: stamp {id} --note "how it was checked"',
+           'stamp_same': '{id}: the stamp matches the files',
+           'weak': 'Accepted, but the probes are weak (only that a file / a word exists — or no probes): {list}',
+           'agent_block': 'FOREMAN: the brief names the output file `{path}` — it does not exist. Write your result to that file (or say why you cannot): without it the phase is not done.',
+           'agent_missing': 'FOREMAN: agent {agent} stopped without its output file `{path}` — the phase is NOT done. Resume the same agent (SendMessage) rather than spawning a new one.',
+           'agent_old': 'FOREMAN: agent {agent} did not update `{path}` (the file is older than the brief) — check that the result is fresh.',
+           'rule_paths': 'FOREMAN·rule for this file {id}: {when} → {do}',
+           'rules_export': 'Rules with paths → .claude/rules: written {n}, removed {m}{far}', 'rules_far': ', outside the project (the edit hook shows them): {n}',
            'bad_json': 'not JSON: {err}'},
 }
 
@@ -165,7 +201,9 @@ def config():
         pass
     c['council'] = {**council, **(c.get('council') or {})}
     # (2.0: modules switch whole parts on/off — an «off» module adds nothing to any hook; budgets are hard caps in characters)
-    c['modules'] = {'promises': True, 'lessons': True, 'board': False, **(c.get('modules') or {})}
+    c['modules'] = {'promises': True, 'lessons': True, 'board': False, 'contract': True, 'rules_paths': True, **(c.get('modules') or {})}
+    # (2.4: agent types that cannot write a file — the contract only warns for them, never blocks)
+    c['contract'] = {'readonly_types': ['Explore', 'Plan', 'claude-code-guide', 'statusline-setup', 'foreman-judge'], **(c.get('contract') or {})}
     c['budget'] = {'prompt_chars': 1200, 'session_chars': 2000, 'recall_hits': 3, 'recall_chars': 700, 'hot_rows': 5, **(c.get('budget') or {})}
     return c
 
@@ -343,6 +381,152 @@ def check_item(item):
     return state_of([v for _, v in res]), res
 
 
+# ---------------------------------------------------------------- evidence stamps (2.4)
+# (Claude-Code-Game-Studios, .claude/scripts/review-receipts.sh, read 07.11: «content changed <=> hash changed»; mtime lies under
+#  restores and sync. An acceptance covers THESE files as they were: a later edit of what the proof stands on — the probes' files,
+#  the evidence (a screenshot, a report, a render) — is a question «still true?», never a verdict. Fable's review 07.11: hash the
+#  normalised TEXT (CRLF, BOM, trailing spaces), a grep probe → its matched lines ± 2, a doc probe → the enclosing heading section,
+#  so a shared big file edited elsewhere stays quiet; a stamped file that is gone is «GONE». `fresh:` keeps mtime: it asks ORDER.)
+STAMP_CAP, STAMP_MAX = 20, 5_000_000
+
+
+def _ntext(b):
+    if b'\0' in b[:8192]:
+        return None                                         # (binary: whole bytes)
+    try:
+        s = b.decode('utf-8-sig')
+    except UnicodeDecodeError:
+        return None
+    return '\n'.join(l.rstrip() for l in s.replace('\r\n', '\n').replace('\r', '\n').split('\n'))
+
+
+def _sha(x):
+    return hashlib.sha256(x.encode('utf-8') if isinstance(x, str) else x).hexdigest()[:24]
+
+
+def _key(f):
+    """a stamped file's name: relative to the project when inside it, else absolute (another drive) — forward slashes"""
+    a = os.path.abspath(f)
+    try:
+        r = os.path.relpath(a, PROJECT)
+    except ValueError:
+        r = '..'
+    return (a if r.startswith('..') else r).replace('\\', '/')
+
+
+def _region(text, rx, k=2):
+    lines = text.split('\n')
+    try:
+        hit = [n for n, l in enumerate(lines) if re.search(rx, l)]
+        if not hit:                                         # (a regex across lines)
+            m = re.search(rx, text)
+            hit = [text.count('\n', 0, m.start())] if m else []
+    except re.error:
+        return None
+    if not hit:
+        return None
+    keep = sorted({j for n in hit for j in range(max(0, n - k), min(len(lines), n + k + 1))})
+    return '\n'.join(lines[j] for j in keep)
+
+
+def _section(text, word):
+    lines = text.split('\n')
+    i = next((n for n, l in enumerate(lines) if word.lower() in l.lower()), None)
+    if i is None:
+        return None
+    start = next((n for n in range(i, -1, -1) if re.match(r'#{1,6}\s', lines[n])), None)
+    if start is None:
+        return text
+    lvl = len(re.match(r'#+', lines[start]).group())
+    end = next((n for n in range(start + 1, len(lines)) if re.match(r'#{1,%d}\s' % lvl, lines[n])), len(lines))
+    return '\n'.join(lines[start:end])
+
+
+def _piece(kind, f, arg):
+    """the hash of what the proof stands on in one file; None = the piece is not there (a grep / a word no longer found)"""
+    b = io.open(f, 'rb').read()
+    t = _ntext(b)
+    if kind == 'grep' and t is not None:
+        r = _region(t, arg)
+        return _sha(r) if r is not None else None
+    if kind == 'doc' and t is not None:
+        s = _section(t, arg)
+        return _sha(s) if s is not None else None
+    return _sha(t if t is not None else b)
+
+
+def _stamp_specs(item):
+    for p in item.get('probes', []):
+        kind, _, rest = p.partition(':')
+        if kind == 'file':
+            yield 'file', rest, None, False
+        elif kind in ('grep', 'doc'):
+            f, _, arg = rest.partition(':')
+            yield kind, f, arg, False
+        elif kind == 'fresh':
+            yield 'file', rest.partition(':')[0], None, False
+    ev = item.get('evidence') or []
+    for e in ([ev] if isinstance(ev, str) else ev):
+        yield 'file', str(e), None, True
+
+
+def stamp_of(item):
+    """(stamp, missing evidence globs): the files the item's proof stands on, hashed — called at EVERY acceptance (the CLI and the
+    board) and by `stamp P-…` after a re-check. Globs are expanded here, never in the brief (a recursive glob over another drive is slow)."""
+    files, seen, skipped, missing = [], set(), 0, []
+    for kind, pat, arg, is_ev in _stamp_specs(item):
+        found = sorted(f for f in glob.glob(path_of(pat), recursive=True) if os.path.isfile(f))
+        if not found:
+            if is_ev:
+                missing.append(pat)
+            continue
+        for f in found:
+            k = (kind, _key(f), arg)
+            if k in seen:
+                continue
+            seen.add(k)
+            if len(files) >= STAMP_CAP or os.path.getsize(f) > STAMP_MAX:
+                skipped += 1; continue
+            try:
+                h = _piece(kind, f, arg)
+            except OSError:
+                skipped += 1; continue
+            files.append({'path': _key(f), 'kind': kind, **({'arg': arg} if arg is not None else {}), 'h': h, **({'ev': True} if is_ev else {})})
+    return {'ts': dt.datetime.now().isoformat(timespec='seconds'), 'files': files, 'skipped': skipped}, missing
+
+
+def stamp_changes(item):
+    """[(path, label)] of the stamped files that changed — [] when it all still matches; None when there is no stamp"""
+    acc = item.get('accepted')
+    st = acc.get('stamp') if isinstance(acc, dict) else None
+    if not st:
+        return None
+    out = []
+    for e in st.get('files', []):
+        f = e['path'] if os.path.isabs(e['path']) else os.path.join(PROJECT, e['path'])
+        if not os.path.isfile(f):
+            out.append((e['path'], L['stamp_gone'])); continue
+        try:
+            same = _piece(e.get('kind', 'file'), f, e.get('arg')) == e.get('h')
+        except OSError:
+            same = False
+        if not same:
+            out.append((e['path'], L['stamp_kind'].get(e.get('kind', 'file'), '')))
+    have = {e['path'] for e in st.get('files', []) if e.get('ev')}
+    ev = item.get('evidence') or []
+    for e in ([ev] if isinstance(ev, str) else ev):        # (evidence named after the acceptance: not covered by its stamp)
+        if not glob.has_magic(str(e)) and _key(path_of(str(e))) not in have:
+            out.append((str(e), L['stamp_kind']['new']))
+    return out
+
+
+def weak(item):
+    """accepted on probes that only say a file / a word EXISTS — or on no probes at all (CCGS test-evidence-review: adequacy beyond
+    existence; the empty case was invisible before 2.4)"""
+    kinds = {p.partition(':')[0] for p in item.get('probes', [])}
+    return not kinds or kinds <= {'file', 'doc'}
+
+
 def state_of(vals):
     if not vals:
         state = 'no-probes'
@@ -420,6 +604,7 @@ def run():
     reg = jsonl(REG)
     for it in reg:
         it['_check'], it['_probes'] = check_item(it)
+        it['_stamp'] = stamp_changes(it) if it.get('status') == 'accepted' else None
     control = [(c['id'], check_item(c)[0]) for c in CONTROLS]
     return {'when': dt.datetime.now().strftime('%d.%m %H:%M'), 'registry': reg, 'control_ok': all(s == 'not' for _, s in control),
             'orphans': orphans(), 'inbox_new': [i for i in jsonl(INBOX) if i.get('state', 'new') == 'new']}
@@ -444,6 +629,8 @@ def summary(r):
                 nxt=sorted([i for i in live if i.get('status') in ('todo', 'parked') and i['_check'] != 'done' and not blockers(i, live)], key=key),
                 red=[i for i in live if i.get('status') == 'accepted' and i['_check'] in ('not', 'partly')],
                 unsigned=[i for i in live if i.get('status') == 'accepted' and not i.get('accepted')],
+                moved=[i for i in live if i.get('status') == 'accepted' and i.get('_stamp')],
+                weak=[i for i in live if i.get('status') == 'accepted' and weak(i)],
                 built=[i for i in live if i.get('status') in ('todo', 'doing') and i['_check'] == 'done'],
                 stale=[i for i in live if i.get('status') == 'doing' and (age(i) or 0) > CFG.get('stale_days', 3)],
                 council=[i for i in live if rounds_of(i) and i.get('status') in OPEN and i.get('council') != 'stopped'])
@@ -452,6 +639,11 @@ def summary(r):
 def short(it, n=55):
     t = it.get('title', '')
     return f"{it.get('id')} «{t[:n]}{'…' if len(t) > n else ''}»"
+
+
+def stamp_word(i):
+    ch = i.get('_stamp') or []
+    return f"{i['id']} ({ch[0][0].rsplit('/', 1)[-1]}: {ch[0][1]}{f' +{len(ch) - 1}' if len(ch) > 1 else ''})"
 
 
 def brief(r):
@@ -471,6 +663,10 @@ def brief(r):
         out.append(L['red'] + ': ' + ', '.join(short(i, 30) for i in s['red'][:5]))
     if s['unsigned']:
         out.append(L['unsigned'] + ': ' + ', '.join(i['id'] for i in s['unsigned'][:8]))
+    if s['moved']:
+        out.append(L['stamp_line'].format(list='; '.join(stamp_word(i) for i in s['moved'][:5])))
+    if s['weak']:
+        out.append(L['weak'].format(list=', '.join(i['id'] for i in s['weak'][:8])))
     if s['stale']:
         out.append(L['stale'].format(d=CFG.get('stale_days', 3)) + ': ' + ', '.join(i['id'] for i in s['stale']))
     if r['orphans']:
@@ -496,6 +692,9 @@ def status_md(r):
     block(L['council'], s['council'], lambda i: f"- **{i['id']}** {i.get('title')} — {council_line(i)}; {rounds_of(i)[-1].get('why') or ''}")
     block(L['next_h'], s['nxt'][:8], lambda i: f"- **{i['id']}** {i.get('title')} ({i.get('priority', '')}; {i.get('status')}; {i['_check']})")
     block(L['built_h'], s['built'], lambda i: f"- **{i['id']}** {i.get('title')}")
+    block(L['stamp_line'].format(list='').rstrip(': '), s['moved'],
+          lambda i: f"- **{i['id']}** {i.get('title')} — " + ', '.join(f'`{p}` {w}' for p, w in i['_stamp'][:6]))
+    block(L['weak'].format(list='').rstrip(': '), s['weak'], lambda i: f"- **{i['id']}** {i.get('title')} — {', '.join(i.get('probes') or []) or '—'}")
     block(L['lost_h'], r['orphans'], lambda o: f'- `{o}`')
     lines.append(L['ctrl_line_ok'] if r['control_ok'] else L['ctrl_line_bad'])
     return '\n'.join(lines) + '\n'
@@ -723,6 +922,8 @@ def hook_stop(inp):
                 r['reminded'] = dt.datetime.now().isoformat(timespec='seconds')
             write_jsonl(INBOX, rows)
             reasons.append(L['hook_stop'].format(list='; '.join(f"{r.get('id', '?')}: «{str(r.get('text', ''))[:120]}»" for r in fresh)))
+    if CFG['modules'].get('contract'):
+        reasons.append(contract_news())
     R = lessons()
     if R:
         last = str(inp.get('last_assistant_message') or '')
@@ -773,6 +974,191 @@ def hook_session(inp):
         _emit({'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': text}})
 
 
+# ---------------------------------------------------------------- the subagent contract (2.4)
+# (CCGS error-recovery-protocol.md «Trigger 0», validate-agent-artifact.sh, read 07.11: «A fluent response is not evidence that a
+#  phase ran. The artifact is.» A brief that names its output file — `Файл результата: `path``, `Output file: `path``, CCGS's
+#  `Write your full output to `path`` — is checked when the subagent stops: missing → ONE block (the docs: the subagent goes on with
+#  the reason — the cheap recovery, its context intact), then the parent is told through PostToolUse(Agent) or the Stop hook.
+#  Fable's review 07.11: block only on MISSING (older-than-brief is advisory: mtime lies, a brief may say «update»); agents that cannot
+#  write are never blocked; Claude Code's internal agents (empty agent_type) are silent; no registry lock in these hooks.)
+CONTRACT = [r'Write your full output to\s+`([^`\n]+)`', r'Output file:\s*`([^`\n]+)`', r'Файл результата:\s*`([^`\n]+)`']
+PLACEHOLDER = re.compile(r'[\[<{}>\]]|\.\.\.|…')
+PLACEHOLDER_WORDS = ('path', 'путь', 'file', 'файл', 'filepath')
+
+
+def _brief_of(path):
+    """(text, ts) of a subagent transcript's FIRST user message — read line by line, never the whole JSONL"""
+    try:
+        with io.open(path, 'rb') as f:
+            for raw in f:
+                try:
+                    row = json.loads(raw.decode('utf-8', 'replace'))
+                except ValueError:
+                    continue
+                if row.get('type') == 'user':
+                    c = (row.get('message') or {}).get('content')
+                    text = c if isinstance(c, str) else ' '.join(x.get('text', '') for x in (c or []) if isinstance(x, dict))
+                    return text, row.get('timestamp')
+    except OSError:
+        pass
+    return '', None
+
+
+def contract_path(text):
+    """the first output file a brief names; a placeholder or an example («например», «e.g.» just before it) is no contract"""
+    hits = []
+    for rx in CONTRACT:
+        for m in re.finditer(rx, text or ''):
+            p, before = m.group(1).strip(), text[max(0, m.start() - 40):m.start()].lower()
+            if p and not PLACEHOLDER.search(p) and p.lower() not in PLACEHOLDER_WORDS and not re.search(r'например|пример|e\.g\.|for example|such as', before):
+                hits.append((m.start(), p))
+    return min(hits)[1] if hits else None
+
+
+def _ts(s):
+    try:
+        return dt.datetime.fromisoformat(str(s).replace('Z', '+00:00')).timestamp()
+    except ValueError:
+        return None
+
+
+def hook_subagent(inp):
+    """SubagentStop: the brief's output file must exist"""
+    if not CFG['modules'].get('contract'):
+        return
+    at, tp = str(inp.get('agent_type') or ''), inp.get('agent_transcript_path')
+    if not at or not tp:
+        return
+    text, ts = _brief_of(tp)
+    raw = contract_path(text)
+    aid = inp.get('agent_id') or ''
+    append_event({'kind': 'agent_stop', 'agent_type': at, 'agent_id': aid, 'contract': raw})
+    if not raw:
+        return
+    f = raw if os.path.isabs(raw) else os.path.join(inp.get('cwd') or PROJECT, raw)
+    if os.path.exists(f):
+        t0 = _ts(ts) if ts else None
+        if t0 and os.path.getmtime(f) < t0 - 2:
+            append_event({'kind': 'agent_artifact_old', 'agent_type': at, 'agent_id': aid, 'path': raw})
+        return
+    blocked = any(r.get('kind') == 'agent_block' and r.get('agent_id') == aid for r in jsonl(EVENTS)) if aid else False
+    readonly = at in (CFG.get('contract') or {}).get('readonly_types', [])
+    if not inp.get('stop_hook_active') and not blocked and not readonly:
+        msg = L['agent_block'].format(path=raw)
+        append_event({'kind': 'agent_block', 'agent_type': at, 'agent_id': aid, 'path': raw})
+        log_hook('subagent', msg, agent=at)
+        _emit({'decision': 'block', 'reason': msg})
+        return
+    append_event({'kind': 'agent_artifact_missing', 'agent_type': at, 'agent_id': aid, 'path': raw})
+
+
+def hook_subagent_start(inp):
+    """SubagentStart: the audit trail's first line (who was started, when)"""
+    if CFG['modules'].get('contract') and inp.get('agent_type'):
+        append_event({'kind': 'agent_start', 'agent_type': inp.get('agent_type'), 'agent_id': inp.get('agent_id') or ''})
+
+
+def contract_news():
+    """the contract problems the parent has not been told yet; telling is an appended «seen» row (append-only, no rewrite, no lock)"""
+    rows = jsonl(EVENTS)
+    seen = {k for r in rows if r.get('kind') == 'contract_seen' for k in r.get('keys', [])}
+    new = [r for r in rows if r.get('kind') in ('agent_artifact_missing', 'agent_artifact_old')
+           and f"{r.get('ts')}|{r.get('agent_id')}|{r.get('path')}" not in seen]
+    if not new:
+        return ''
+    append_event({'kind': 'contract_seen', 'keys': [f"{r.get('ts')}|{r.get('agent_id')}|{r.get('path')}" for r in new]})
+    return '\n'.join((L['agent_missing'] if r['kind'] == 'agent_artifact_missing' else L['agent_old']).format(
+        agent=r.get('agent_type'), path=r.get('path')) for r in new[:5])
+
+
+def hook_agent_done(inp):
+    """PostToolUse on the Agent tool: the parent hears at once that a subagent left no output file (the docs: the way to put text
+    in front of the parent after a subagent returns)"""
+    if not CFG['modules'].get('contract'):
+        return
+    text = contract_news()
+    if text:
+        log_hook('agent-done', text)
+        _emit({'hookSpecificOutput': {'hookEventName': 'PostToolUse', 'additionalContext': text}})
+
+
+# ---------------------------------------------------------------- rules with paths (2.4)
+# (CCGS .claude/rules — Claude Code's own path-scoped rules, read 07.11. The docs: a rule's `paths:` are relative to the project; a
+#  file on another drive is not documented. So a rule of rules.jsonl with `paths` is shown two ways (Fable's review 07.11): the paths
+#  inside the project → `.claude/rules/foreman-R-….md`, generated and marked (rules.jsonl stays the one source), loaded by Claude
+#  Code itself; the paths outside → the edit hook (PreToolUse) puts the rule in front of Claude once per session.)
+RULE_MARK = '<!-- generated by Foreman from .foreman/rules.jsonl'
+SHOWN = os.path.join(HERE, 'rules_shown.jsonl')
+
+
+def _paths(r):
+    ps = r.get('paths') or []
+    return [str(p) for p in ([ps] if isinstance(ps, str) else ps) if str(p).strip()]
+
+
+def _outside(p):
+    return os.path.isabs(p) or bool(re.match(r'^[A-Za-z]:', p)) or p.replace('\\', '/').startswith('../')
+
+
+def rules_export(R=None):
+    """(written, removed, outside): .claude/rules/foreman-<id>.md for every ACTIVE rule with paths inside the project"""
+    R = R or lessons()
+    if not R:
+        return 0, 0, 0
+    d = os.path.join(PROJECT, '.claude', 'rules')
+    want, far = {}, 0
+    for r in R.jsonl(R.RULES):
+        if r.get('status') != 'active' or not _paths(r):
+            continue
+        inside = [p for p in _paths(r) if not _outside(p)]
+        far += len(inside) < len(_paths(r))
+        if inside:
+            body = ('---\npaths:\n' + ''.join(f'  - "{p}"\n' for p in inside) + '---\n'
+                    + f"{RULE_MARK} ({r['id']}) — edit the rule, not this file: python .foreman/foreman.py rule set {r['id']} … -->\n\n"
+                    + f"# {r['id']} · {r.get('when', '')}\n\n{r.get('do', '')}\n\n"
+                    + (f"«{r.get('quote', '')}» ({r.get('date', '')})\n" if r.get('quote') else ''))
+            want[f"foreman-{r['id']}.md"] = body
+    n = m = 0
+    if want:
+        os.makedirs(d, exist_ok=True)
+    for name, body in want.items():
+        p = os.path.join(d, name)
+        if not os.path.exists(p) or io.open(p, encoding='utf-8').read() != body:
+            io.open(p, 'w', encoding='utf-8', newline='\n').write(body); n += 1
+    for name in (os.listdir(d) if os.path.isdir(d) else []):
+        p = os.path.join(d, name)
+        if name.startswith('foreman-') and name.endswith('.md') and name not in want and RULE_MARK in read(p):
+            os.remove(p); m += 1
+    return n, m, far
+
+
+def hook_edit(inp):
+    """PreToolUse (Edit / Write / MultiEdit / NotebookEdit): an active rule whose path OUTSIDE the project matches the file — once per
+    session and rule; never blocks, no lock"""
+    if not CFG['modules'].get('rules_paths'):
+        return
+    ti = inp.get('tool_input') or {}
+    f = ti.get('file_path') or ti.get('notebook_path')
+    R = lessons() if f else None
+    if not R:
+        return
+    fa = os.path.normcase(os.path.abspath(f)).replace('\\', '/')
+    hits = [r for r in R.jsonl(R.RULES) if r.get('status') == 'active'
+            and any(_outside(p) and fnmatch.fnmatch(fa, os.path.normcase(os.path.abspath(p)).replace('\\', '/')) for p in _paths(r))]
+    if not hits:
+        return
+    sid = str(inp.get('session_id') or '')
+    shown = {x.get('rule') for x in jsonl(SHOWN) if x.get('session') == sid}
+    new = [r for r in hits if r['id'] not in shown]
+    if not new:
+        return
+    rows = jsonl(SHOWN)[-500:] + [{'session': sid, 'rule': r['id'], 'ts': dt.datetime.now().isoformat(timespec='seconds')} for r in new]
+    write_jsonl(SHOWN, rows)
+    text = '\n'.join(L['rule_paths'].format(id=r['id'], when=str(r.get('when', ''))[:120], do=str(r.get('do', ''))[:220]) for r in new)[:600]
+    log_hook('edit', text, file=f)
+    _emit({'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'additionalContext': text}})
+
+
 # ---------------------------------------------------------------- the council
 MARKS = {True: '✓', False: '✗', None: '?'}
 
@@ -794,6 +1180,10 @@ def council_cmd(a):
         if nc:
             print('  ' + L['cmp_nc'].format(probes='; '.join(nc)))
         print(f"{it['id']} @ {root}: {state} ({sum(v is True for _, v in res)}/{len(res)})" + ('' if ctrl else ' · ' + L['cmp_ctrl']))
+        if it.get('status') == 'accepted' and root == PROJECT:      # (2.4: the stamp — what changed since the acceptance)
+            ch = stamp_changes(it)
+            print('  ' + (L['stamp_none'].format(id=it['id']) if ch is None else L['stamp_same'].format(id=it['id']) if not ch
+                          else L['stamp_line'].format(list=', '.join(f'{p} ({w})' for p, w in ch[:8]))))
         return 2 if not ctrl else 0 if state == 'done' else 1
     if a[0] == 'compare':
         loose = [x for x in a[2:] if '=' not in x]
@@ -858,6 +1248,16 @@ def main(a):
         sys.path.insert(0, HERE)
         import board
         return board.serve(sys.modules[__name__], a[1:])
+    if a[:1] == ['hook'] and a[1:2] and a[1] in ('subagent', 'subagent-start', 'agent-done', 'edit'):
+        try:                                                # (2.4: parallel agents and every edit — no registry lock, Fable 07.11)
+            {'subagent': hook_subagent, 'subagent-start': hook_subagent_start, 'agent-done': hook_agent_done, 'edit': hook_edit}[a[1]](_stdin())
+        except Exception:
+            pass
+        return 0
+    if a[:1] == ['rules'] and a[1:2] == ['export']:
+        n, m, far = rules_export()
+        print(L['rules_export'].format(n=n, m=m, far=L['rules_far'].format(n=far) if far else ''))
+        return 0
     if a[:1] == ['hook']:
         try:
             with locked():
@@ -880,7 +1280,12 @@ def main(a):
         with locked():
             if a[0] == 'ledger':
                 R.ledger_add(' '.join(a[1:])); print(R.LX['ledger_ok'].format(line=' '.join(a[1:]))); return 0
-            return R.rule_cmd(a[1:], quote_check=owner_says if LOCK_HELD else None)
+            code = R.rule_cmd(a[1:], quote_check=owner_says if LOCK_HELD else None)
+            if code == 0 and a[1:2] and a[1] in ('accept', 'set', 'drop', 'replace') and CFG['modules'].get('rules_paths'):
+                n, m, far = rules_export(R)                 # (the generated .claude/rules follow the rule's life — 2.4)
+                if n or m:
+                    print(L['rules_export'].format(n=n, m=m, far=L['rules_far'].format(n=far) if far else ''))
+            return code
     if a[:1] == ['comment'] and len(a) > 2:
         with locked():
             reg = jsonl(REG)
@@ -895,7 +1300,7 @@ def main(a):
         return hooklog_cmd(a[1:])
     if a[:1] == ['replay']:
         return replay_cmd(a[1:])
-    if a[:1] in (['add'], ['set'], ['take'], ['skip'], ['round']):
+    if a[:1] in (['add'], ['set'], ['take'], ['skip'], ['round'], ['stamp']):
         with locked():
             return commands(a)
     return commands(a)
@@ -1006,7 +1411,15 @@ def commands(a):
             ok, ts = owner_says([it['id']], quote or '')
             if not ok:
                 print(ts); return 1
-            it['accepted'] = {'ts': dt.datetime.now().isoformat(timespec='seconds'), 'by': 'owner-quote', 'quote': quote, 'msg_ts': ts}
+            try:
+                ev = {'evidence': arg_json(wants['evidence'])} if 'evidence' in wants else {}
+            except ValueError as e:
+                print(L['bad_json'].format(err=e)); return 1
+            st, missing = stamp_of({**it, **ev})
+            if missing:
+                print(L['stamp_empty'].format(globs=', '.join(missing), id=it['id'])); return 1
+            it['accepted'] = {'ts': dt.datetime.now().isoformat(timespec='seconds'), 'by': 'owner-quote', 'quote': quote, 'msg_ts': ts,
+                              'stamp': st}   # (2.4: what the acceptance stood on, hashed)
         if rounds_of(it) and not force and any(k in ('probes', 'rubric') for k, _, _ in pairs):
             print(L['frozen'].format(id=it['id'], n=len(rounds_of(it)))); return 1
         for k, _, _ in pairs:
@@ -1016,7 +1429,7 @@ def commands(a):
         try:
             for k, _, v in pairs:
                 if k:
-                    it[k] = arg_json(v) if k in ('probes', 'rubric', 'rounds', 'rank', 'comments', 'blocked_by', 'tags') else v
+                    it[k] = arg_json(v) if k in ('probes', 'rubric', 'rounds', 'rank', 'comments', 'blocked_by', 'tags', 'evidence') else v
         except ValueError as e:
             print(L['bad_json'].format(err=e)); return 1
         changed = [k for k in ('quote', 'probes', 'rubric') if it.get(k) != was[k]]
@@ -1032,6 +1445,27 @@ def commands(a):
         it['touched'] = today()
         write_jsonl(REG, reg)
         print(json.dumps(it, ensure_ascii=False))
+        return 0
+    if a[:1] == ['stamp']:
+        # (2.4: after a re-check of an accepted item whose files changed — a new stamp; the acceptance itself stands, so no owner words)
+        reg = jsonl(REG)
+        it = next((i for i in reg if i.get('id') == (a[1] if len(a) > 1 else '')), None)
+        if not it:
+            print('no item', ' '.join(a[1:2])); return 1
+        state, _ = check_item(it)
+        if state != 'done':
+            print(L['stamp_red'].format(id=it['id'], state=state)); return 1
+        st, missing = stamp_of(it)
+        if missing:
+            print(L['stamp_empty'].format(globs=', '.join(missing), id=it['id'])); return 1
+        note = a[a.index('--note') + 1] if '--note' in a and a.index('--note') + 1 < len(a) else ''
+        acc = it['accepted'] if isinstance(it.get('accepted'), dict) else {'legacy': True}
+        acc['stamp'] = st
+        acc.setdefault('restamp', []).append({'ts': st['ts'], 'note': note[:300]})
+        it['accepted'] = acc
+        write_jsonl(REG, reg)
+        append_event({'kind': 'restamp', 'id': it['id'], 'note': note[:300], 'files': len(st['files'])})
+        print(L['stamp_ok'].format(id=it['id'], n=len(st['files']), skip=L['stamp_skip'].format(n=st['skipped']) if st['skipped'] else ''))
         return 0
     if a[:1] in (['take'], ['skip']):
         rows = jsonl(INBOX)

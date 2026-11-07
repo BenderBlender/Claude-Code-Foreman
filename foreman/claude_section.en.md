@@ -13,7 +13,7 @@ Rules for Claude:
    - `doc:file:word`;
    - `get:http://…`;
    - `cmd:…` — only if the owner set `allow_cmd` in `.foreman/config.json`.
-3. **Never type «done»** — the probes compute it. Statuses by hand: `todo · doing · waiting · parked · accepted` (after the owner accepted it) `· dropped` (only on the owner's word).
+3. **Never type «done»** — the probes compute it. Statuses by hand: `todo · doing · waiting · parked · accepted` (after the owner accepted it) `· dropped` (only on the owner's word). On acceptance Foreman STAMPS what the proof stands on: the probes' files and the `evidence` (a screenshot, a report, a render — `set P-… evidence=["…"]` before the acceptance). The yellow line «files changed after the acceptance» is a question, not a verdict: re-check it the way the owner would, then `stamp P-… --note "how it was checked"`.
 4. **Parking.** A new ask mid-work → first `set P-… status=parked next="the next step"` on the current item, then the new one.
 5. **«What is the project status?» / «check-up»** → `python .foreman/foreman.py status` and the `foreman` agent: it judges what is done by meaning, what is forgotten, and the three next steps. Report on one screen, in plain words.
 6. **The brief at a session start and after a compaction** is the source of truth about unfinished work. Start from it, not from the summary.

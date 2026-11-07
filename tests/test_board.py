@@ -153,6 +153,8 @@ try:
     acc = items(proj)['P-003'].get('accepted') or {}
     check('accept → a line in owner.jsonl (via board), accepted.quote is that line', code == 200 and items(proj)['P-003']['status'] == 'accepted'
           and own and own[-1]['via'] == 'board' and acc.get('quote') == own[-1]['text'], [d, acc])
+    check('2.4: the board\'s acceptance is stamped too (the probe\'s file hashed)',
+          any(f.get('path') == '.foreman/foreman.py' and f.get('h') for f in (acc.get('stamp') or {}).get('files', [])), acc.get('stamp'))
     fm(proj, 'set', 'P-003', 'probes=["file:nothing"]')
     check('then the probes changed through the CLI → back to doing (slice 1)', items(proj)['P-003']['status'] == 'doing', items(proj)['P-003'])
     code, d = B.call('/fm/api/state')

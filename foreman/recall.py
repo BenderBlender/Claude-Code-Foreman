@@ -40,7 +40,11 @@ RULES, LEDGER, EVAL, EVENTS, LEXICON, RULES_MD = (os.path.join(HERE, n) for n in
                                                   ('rules.jsonl', 'ledger.md', 'eval.jsonl', 'events.jsonl', 'lexicon.json', 'RULES.md'))
 DEFAULTS = {'stop_gate': 'correction', 'extra_correction_cues': [], 'extra_teaching_cues': [], 'rules_extra': [],
             'record_paths': [], 'record_hint': '', 'confirm_days': 60, 'edit_gate': 'on', 'guard_paths': [], 'memory_dir': 'auto',
-            'index_skills': True}
+            'index_skills': True, 'absence_days': 30}
+# (2.4, CCGS .claude/rules/agent-memory.md, read 07.11: «Never record a temporary absence as a durable fact» — «X is not installed»
+#  is true the day it is written and harmful later; a narrow pattern (Fable 07.11: a bare «нет» is everywhere in Russian), warn only)
+ABSENCE = re.compile(r"не установлен|отсутству|not installed|does(?:n't| not) exist|\bнет (?:весов|модели|файла|папки|доступа|поддержки)"
+                     r"|\bno \w+ yet\b|\b(?:ещё|еще|пока) нет\b|isn't (?:installed|available)", re.I)
 BUDGET = {'prompt_chars': 1200, 'session_chars': 2000, 'recall_hits': 3, 'recall_chars': 700, 'hot_rows': 5}
 CFG, LANG, LX = {'lessons': dict(DEFAULTS), 'budget': dict(BUDGET)}, 'ru', {}
 
@@ -83,6 +87,8 @@ TXT = {
            'hot': 'Горячие правила', 'guards_red': 'Стражи красные', 'proposed': 'Правила ждут вашего «да» (rule accept)',
            'added': 'записано: {id} (статус «предложено» — станет «принято» словом владельца: rule accept {id})',
            'refuse': 'правилу нужны непустые when, do и quote (дословно); можно @файл.json',
+           'absence_warn': 'внимание: правило говорит о том, чего НЕТ («{m}») — со временем это станет неправдой. Добавьте "as_of": "ГГГГ-ММ-ДД" (на какой день верно) или пробу вместо слов.',
+           'absence_mark': ' · проверить: «{m}» — на {d}',
            'keys_long': 'внимание: в keys больше 12 слов — правило будет находиться где не надо',
            'guard_kind': 'страж — только проба file:/grep:/nogrep:/doc: (get:/cmd: — нет)',
            'only_active': 'горячим (уровень 2) и стражем (уровень 3) бывает только правило, принятое владельцем (rule accept)',
@@ -118,6 +124,8 @@ TXT = {
            'hot': 'Hot rules', 'guards_red': 'Red guards', 'proposed': 'Rules waiting for your «yes» (rule accept)',
            'added': 'recorded: {id} (status «proposed» — the owner\'s word makes it «active»: rule accept {id})',
            'refuse': 'a rule needs non-empty when, do and quote (verbatim); @file.json works',
+           'absence_warn': 'note: the rule states that something is ABSENT («{m}») — that turns false with time. Add "as_of": "YYYY-MM-DD" (the day it was true) or a probe instead of words.',
+           'absence_mark': ' · re-check: «{m}» — as of {d}',
            'keys_long': 'note: more than 12 words in keys — the rule will fire where it should not',
            'guard_kind': 'a guard is a file:/grep:/nogrep:/doc: probe only (no get:/cmd:)',
            'only_active': 'only a rule the owner accepted (rule accept) may be hot (level 2) or a guard (level 3)',
@@ -287,6 +295,19 @@ def frontmatter(text, key):
     return m.group(1).strip().strip('"\'') if m else ''
 
 
+def absence_mark(r):
+    """a rule about something ABSENT, older than lessons.absence_days (from its as_of, else its date) → «re-check» in recall (2.4)"""
+    m = ABSENCE.search(f"{r.get('when', '')} {r.get('do', '')}")
+    if not m:
+        return ''
+    d = str(r.get('as_of') or r.get('date') or '')[:10]
+    try:
+        old = (dt.date.today() - dt.date.fromisoformat(d)).days > int(CFG['lessons'].get('absence_days', 30))
+    except ValueError:
+        old = True
+    return LX['absence_mark'].format(m=m.group(0), d=d or '?') if old else ''
+
+
 def rule_blocks():
     out = []
     for r in jsonl(RULES):
@@ -294,7 +315,7 @@ def rule_blocks():
             continue
         text = f"{r.get('when')} → {r.get('do')} «{r.get('quote', '')}» {r.get('keys', '')} {' '.join(r.get('tags') or [])}"
         label = f"{r['id']} {'' if r.get('status') == 'active' else '(предл.) ' if LANG == 'ru' else '(proposed) '}" \
-                f"{r.get('when')} → {r.get('do')}" + (f" («{r['quote'][:60]}»)" if r.get('quote') else '')
+                f"{r.get('when')} → {r.get('do')}" + (f" («{r['quote'][:60]}»)" if r.get('quote') else '') + absence_mark(r)
         out.append(Block('rule', RULES, r['id'], text, f"{r.get('when')} {r.get('keys', '')}", label))
     return out
 
@@ -823,6 +844,9 @@ def rule_cmd(a, probe_kinds=('file', 'grep', 'nogrep', 'doc', 'fresh'), quote_ch
             print(LX['refuse']); return 1
         if len(str(r.get('keys', '')).split()) > 12:
             print(LX['keys_long'])
+        ab = ABSENCE.search(f"{r.get('when', '')} {r.get('do', '')}")
+        if ab and not r.get('as_of'):
+            print(LX['absence_warn'].format(m=ab.group(0)))
         r = {'id': next_id(rows), 'date': today(), 'level': 1, 'tags': [], **{k: v for k, v in r.items() if k not in ('id', 'status')},
              'status': 'proposed', 'touched': today()}
         r['level'] = min(int(r.get('level') or 1), 1)        # (hot / guard only after the owner's «yes»)
@@ -984,6 +1008,9 @@ def lesson_cmd(a):
     text = ' '.join(a)
     cls = classify(text)
     print(reflector(cls) or '—')
+    ab = ABSENCE.search(text)
+    if ab:
+        print(LX['absence_warn'].format(m=ab.group(0)))
     p = pack(text)
     if p:
         print(p)
