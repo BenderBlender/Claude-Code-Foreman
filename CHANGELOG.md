@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.4.1 — 2026-11-08 · The panel survives a Codex update; a semantic layer measured and not adopted
+
+- **The panel finds a moved CLI.** `panel detect` writes the absolute path it found into config.json, and the Codex app moves
+  `codex.exe` into a new build folder on every update — the first `panel run` after an update failed with «WinError 2». `ask_cli` now
+  goes through `_resolve_exe()`: a path that no longer exists falls back to the program's name (PATH, npm's folder, the newest Codex
+  build). Test: panel +1 (31).
+- **Measured and NOT adopted** (the owner's rule: measure before building; numbers from the author's project — 362 recall blocks, its
+  65 real situations, 358 hand-labelled owner messages, all on the CPU):
+  - *A semantic layer for recall* — a council of three models (Claude Fable, ChatGPT, Gemini) proposed a multilingual embedder fused
+    with BM25. Foreman 2.4 alone: the needed rule in the 3-line pack 81 % / 93 % (design / holdout). Three embedders, each first run on
+    its model card's example — multilingual-e5-small, paraphrase-multilingual-MiniLM-L12-v2, bge-m3:
+    - every fusion over the whole block text was worse;
+    - bge-m3 «append only» fixed 2 of 29 holdout cases only at a cosine threshold that also woke 11–16 of 22 silent messages;
+    - at a quiet threshold it changed nothing;
+    - re-ranking moved 3 of 65 to first place — invisible in a 3-line pack.
+  - *A learned correction detector* — logistic regression on embeddings vs the word lists, split by time: worse (F1 0.10–0.12 vs
+    0.59; 39 positives — it learns the topic, not the tone).
+  - *Indexing bold-lead paragraphs of the rule book* — noise: a long rule paragraph full of ordinary words answered «are you still
+    working?». *The project's own ledger* — 165 of 358 packs changed, nothing fixed.
+  - So the lexical recall stays. A project WITHOUT tuned Keys and a lexicon might gain more from an embedder — measure it on your own
+    situations first.
+- Tests: all suites 247 (board 29, council 28, lessons 45, panel 31, v21 49, v23 16, v24 49).
+
 ## 2.4 — 2026-11-07 · Proof that still holds: stamps, the subagent contract, rules with paths
 
 From Claude-Code-Game-Studios (github.com/Donchitos/Claude-Code-Game-Studios, read 07.11 from its clone: `review-receipts.sh`,

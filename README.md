@@ -245,6 +245,21 @@ One more lesson from the same repository, as a measurement: four games were buil
 written before the first line of code; two blind reviewers and a human playtest ranked that build last. The documents bought
 traceability, not a better game. Foreman is not about paperwork: one quote, a few probes, a stamp.
 
+## Measured and not adopted (2.4.1)
+
+Foreman's recall is lexical: stems, a trigger field, Keys, a concept lexicon, a law layer. A council of three models proposed a
+«semantic layer» on top: a multilingual embedder on the CPU fused with BM25, and a learned detector of the owner's corrections. The
+author's project measured it **before** building it, on its 65 real situations and 358 hand-labelled messages.
+
+The result: no gain worth its cost.
+- The fusions were worse.
+- The best embedder (bge-m3, 2.3 GB) helped 2 of 29 held-out cases only at a threshold where the hints stopped being quiet.
+- The learned detector lost to the word lists: 39 examples teach the topic, not the tone.
+
+The numbers are in `CHANGELOG.md`. If your rule book has no tuned Keys or lexicon, an embedder may help you more — measure it on
+your own situations before trusting it. 2.4.1 itself fixes the panel after a Codex update: the program is found by name when its
+saved path is gone.
+
 ## Foreman vs. the alternatives
 
 **Foreman is not another task manager.** Task managers track the work an agent plans. Foreman guards the promises *you* made, in your own words, and proves they were kept. It's the part that's missing when the plan is fine but Monday's request still disappears.

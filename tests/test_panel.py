@@ -232,6 +232,27 @@ try:
     check('the installer asks about the panel ONCE; a «no» is remembered (an update does not ask again)', q in r1.stdout and q not in r2.stdout
           and ca['modules'].get('panel') is False and ca['panel'].get('offered'), [r1.stdout[-200:], r2.stdout[-200:]])
 
+    # (2.4.1) a CLI path written by `panel detect` that no longer exists (the Codex app moved to a new build folder) → the newest build
+    la = os.path.join(base, 'localappdata')
+    old = os.path.join(la, 'OpenAI', 'Codex', 'bin', 'a1old', 'codex.exe')
+    new = os.path.join(la, 'OpenAI', 'Codex', 'bin', 'f7new', 'codex.exe')
+    os.makedirs(os.path.dirname(new), exist_ok=True)
+    io.open(new, 'w').close()
+    probe = ("import importlib.util, sys; s = importlib.util.spec_from_file_location('p', sys.argv[1]); m = importlib.util.module_from_spec(s); "
+             "s.loader.exec_module(m); print(m._resolve_exe(sys.argv[2]))")
+    stale = 'codex' if os.name != 'nt' else old
+    fake_path = os.path.join(base, 'fakebin')
+    os.makedirs(fake_path, exist_ok=True)
+    if os.name != 'nt':                                    # (POSIX: no Codex app folder — the name is found in PATH)
+        io.open(os.path.join(fake_path, 'codex'), 'w').write('#!/bin/sh\n')
+        os.chmod(os.path.join(fake_path, 'codex'), 0o755)
+        stale = os.path.join(base, 'gone', 'codex')
+    r = subprocess.run([PY, '-c', probe, os.path.join(KIT, 'foreman', 'panel.py'), stale], capture_output=True, encoding='utf-8',
+                       env={**os.environ, 'LOCALAPPDATA': la, 'APPDATA': la, 'PATH': fake_path})   # (no real codex on PATH / npm)
+    want = new if os.name == 'nt' else os.path.join(fake_path, 'codex')
+    check('a member\'s program path that no longer exists (the Codex app updated) → the newest build by name, not «WinError 2»',
+          os.path.normcase(r.stdout.strip()) == os.path.normcase(want), r.stdout + r.stderr)
+
     r = subprocess.run([PY, os.path.join(KIT, 'install.py'), proj, '--uninstall', '--yes'], capture_output=True, encoding='utf-8')
     check('uninstall removes the kit\'s unchanged panel skill', not os.path.exists(os.path.join(proj, '.claude', 'skills', 'foreman-panel')), r.stdout[-200:])
 finally:

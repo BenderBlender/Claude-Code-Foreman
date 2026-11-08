@@ -234,6 +234,16 @@ def _which(exe):
     return None
 
 
+def _resolve_exe(cmd0):
+    """(2.4.1) the program to start. config.json keeps the absolute path `panel detect` found, but the Codex app moves codex.exe into a
+    new build folder on every update — 08.11 the first run after an update failed with «WinError 2» on the old path. A path that no
+    longer exists falls back to the program's NAME: PATH, npm's folder, the newest Codex build."""
+    exe = _which(cmd0) or cmd0
+    if os.path.isabs(str(exe)) and not os.path.exists(exe):
+        exe = _which(os.path.splitext(os.path.basename(str(cmd0)))[0]) or exe
+    return exe
+
+
 def _get_json(url, timeout=2):
     try:
         with urllib.request.urlopen(url, timeout=timeout) as r:
@@ -434,7 +444,7 @@ def ask_cli(m, prompt, folder, timeout):
         cmd = [str(x).replace('{out}', out).replace('{dir}', sandbox) for x in cmd]
         extra = [str(x) for x in m.get('args') or []]      # (the member's own flags: a model, an effort — «each at its strongest», S5)
         cmd = cmd[:-1] + extra + cmd[-1:] if extra and cmd[-1] == '-' else cmd + extra
-        exe = _which(cmd[0]) or cmd[0]
+        exe = _resolve_exe(cmd[0])
         strip = set(m.get('strip_env') or [])
         env = {k: v for k, v in os.environ.items() if k not in strip}
         env['PYTHONIOENCODING'] = 'utf-8'
