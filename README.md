@@ -233,7 +233,9 @@ reviewed by a second model before any code was written:
   Agent tool, or the Stop hook for a background agent). A fluent reply is not evidence that a phase ran; the file is. Agents that cannot
   write (Explore, Plan…) are only reported, never held; Claude Code's internal agents are left alone. Module `contract`.
   2.5.1: only the session that started the agent hears about it (2.4–2.5.0 told whichever session stopped first, and the real parent
-  never did); a brief with an output file given to an agent that only reads is said before the run (`hook tool`).
+  never did); a brief with an output file given to an agent that only reads is said before the run (`hook tool`). 2.6.2: a READING
+  brief to a generic agent (`contract.reader_types`) that will run on an expensive model (no `model` = the main session's) gets one
+  note — take Sonnet / Haiku for bulk reading (`contract.reader_models`, `builtin_models`; `reader_note: false` turns it off).
 - **Rules with paths.** A rule may carry `"paths": ["src/ui/**"]`. Paths inside the project become Claude Code's own path-scoped
   rules — `.claude/rules/foreman-R-012.md`, generated and marked, following the rule's life (accept / change / drop). Paths outside
   the project (another drive, a sibling repository — not covered by Claude Code's rules) are shown by Foreman's edit hook

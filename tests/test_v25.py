@@ -649,6 +649,23 @@ try:
               prompt='Найди, где задаются камеры.\n\nФайл результата: `out/cams_C.md`')
     check('K5 a brief with an output file to an agent that only reads → said BEFORE the run; to one that writes → silent',
           'только читает' in ctx(o) and 'cams_C' in ctx(o) and not denied(o) and 'только читает' not in ctx(o2), [ctx(o), ctx(o2)])
+    # (2.6.2: readers on the expensive model — the council of 11.11; on 10.11 two readers ran on Opus by default)
+    read_brief = 'Прочитай репозиторий M:/repos/lab и составь список его систем. Файл результата: `out/lab.md`'
+    o = tool(proj, 'sR1', 'Agent', description='Read the lab repo', subagent_type='general-purpose', prompt=read_brief)
+    check('K6 a READING brief to general-purpose with no model (inherit = the main session) → the note «sonnet / haiku», no refusal',
+          'читатель' in ctx(o) and 'inherit' in ctx(o) and not denied(o), ctx(o))
+    o = tool(proj, 'sR2', 'Agent', description='Read the lab repo', subagent_type='general-purpose', model='sonnet', prompt=read_brief)
+    o2 = tool(proj, 'sR3', 'Agent', description='Map the code', subagent_type='Explore', prompt='Изучи, где задаются камеры.')
+    o3 = tool(proj, 'sR4', 'Agent', description='Advisor', subagent_type='general-purpose', model='fable', prompt=read_brief)
+    check('K7 the same on sonnet; Explore (a built-in on haiku); the advisor\'s model → silent', 'читатель' not in ctx(o) + ctx(o2) + ctx(o3),
+          [ctx(o), ctx(o2), ctx(o3)])
+    write(proj, '.claude/agents/critic.md', '---\nname: critic\nmodel: opus\n---\nThe critic.\n')
+    o = tool(proj, 'sR5', 'Agent', description='Review the frame', subagent_type='critic', prompt='Изучи кадр и найди ошибки.')
+    o2 = tool(proj, 'sR6', 'Agent', description='Build it', subagent_type='general-purpose', prompt='Сделай модуль экспорта и тесты.')
+    check('K8 a crew agent on Opus by its definition (not a generic reader type); a working brief → silent',
+          'читатель' not in ctx(o) + ctx(o2), [ctx(o), ctx(o2)])
+    o = tool(proj, 'sR7', 'Agent', description='Read the logs', subagent_type='general-purpose', model='opus', prompt='Read the logs and summarize.')
+    check('K9 an explicit model «opus» on a reading brief → the note names it', 'читатель' in ctx(o) and 'opus' in ctx(o), ctx(o))
 
     # ---------------------------------------------------------------- 2.4 still: the path rule through the new hook
     code, out = fm(proj, 'rule', 'add', json.dumps({'when': 'editing the far config', 'do': 'keep the comments', 'quote': 'не трогай комментарии',

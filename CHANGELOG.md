@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.6.2 — 2026-11-11 · A reader on the expensive model is noted
+
+The council of 11.11: «readers — bulk reading, logs, repos — Sonnet / Haiku, never Opus»; on 10.11 two readers ran on Opus by default
+(no `model` → the main session's) and the weekly limit ended. The owner: a warning, not a wall.
+- `hook tool`, PreToolUse on Agent / Task: a READING brief (read / study / survey / inventory … in RU and EN) given to a generic agent
+  (`contract.reader_types`: general-purpose, claude, Explore, Plan) that will run on an expensive model → one note: take
+  `model: "sonnet"` / `"haiku"`, or say in the brief why Opus. The model = the call's `model`, else the agent definition's `model:`, else
+  a built-in's (`contract.builtin_models`, Explore → haiku), else «inherit». Silent for the crew's own agent types, for the advisor's
+  model, inside a subagent. Never a refusal; `contract.reader_note: false` switches it off.
+- Tests: v25 K6–K9. All suites green.
+
 ## 2.6.1 — 2026-11-11 · An attempt's input may be a word
 
 Reported the same evening by another session of the author's project: «variant 3» on `run_authors.cmd fox gnome` → `warrior` →

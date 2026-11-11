@@ -143,6 +143,9 @@ T = {
            'agent_old': 'ПРОРАБ: агент {agent} не обновил `{path}` (файл старше задания) — проверьте, что результат свежий.',
            'agent_readonly': ('ПРОРАБ: агент {agent} только читает — файл результата `{path}` он записать не мог. Результат — в его '
                               'ответе: нужен файлом — запишите сами; в следующий раз задание с файлом — агенту, который пишет.'),
+           'reader_opus': ('ПРОРАБ·читатель: задание на чтение агенту {agent} пойдёт на модели «{model}» (дорогая; «inherit» — модель '
+                           'главной сессии). Массовое чтение (логи, репозитории, отчёты, код) — model: "sonnet" или "haiku" (консилиум 11.11); '
+                           'нужен именно Opus — скажите в задании, почему.'),
            'agent_ro_brief': ('ПРОРАБ·контракт: агент {agent} только читает (записи файлов у него нет) — «Файл результата: `{path}`» он '
                               'не выполнит. Дайте задание агенту, который пишет (general-purpose и т. п.), или уберите строку и возьмите '
                               'результат из ответа.'),
@@ -205,6 +208,9 @@ T = {
            'agent_old': 'FOREMAN: agent {agent} did not update `{path}` (the file is older than the brief) — check that the result is fresh.',
            'agent_readonly': ('FOREMAN: agent {agent} only reads — it could not write the output file `{path}`. The result is in its '
                               'answer: write it yourself if a file is needed; next time give a brief with a file to an agent that writes.'),
+           'reader_opus': ('FOREMAN·reader: a reading brief to agent {agent} will run on «{model}» (expensive; «inherit» = the main '
+                           'session\'s model). Bulk reading (logs, repos, reports, code) — model: "sonnet" or "haiku" (the council of 11.11); '
+                           'if Opus is really needed, say why in the brief.'),
            'agent_ro_brief': ('FOREMAN·contract: agent {agent} only reads (it has no file writing) — «Output file: `{path}`» it cannot '
                               'do. Give the brief to an agent that writes (general-purpose …), or drop the line and take the result from '
                               'its answer.'),
@@ -229,7 +235,10 @@ def config():
                     'act_recall': False, 'heartbeat': False, 'attempts': True, 'engines': True, 'advisor': False,
                     **(c.get('modules') or {})}
     # (2.4: agent types that cannot write a file — the contract only warns for them, never blocks)
-    c['contract'] = {'readonly_types': ['Explore', 'Plan', 'claude-code-guide', 'statusline-setup', 'foreman-judge'], **(c.get('contract') or {})}
+    c['contract'] = {'readonly_types': ['Explore', 'Plan', 'claude-code-guide', 'statusline-setup', 'foreman-judge'],
+                     # (2.6.2: a reading brief to a generic agent on an expensive model → a note; the built-ins' own models)
+                     'reader_note': True, 'reader_types': ['general-purpose', 'claude', 'Explore', 'Plan'],
+                     'reader_models': ['haiku', 'sonnet'], 'builtin_models': {'Explore': 'haiku'}, **(c.get('contract') or {})}
     c['budget'] = {'prompt_chars': 1200, 'session_chars': 2000, 'recall_hits': 3, 'recall_chars': 700, 'hot_rows': 5, **(c.get('budget') or {})}
     return c
 
@@ -1145,6 +1154,45 @@ def contract_brief_note(inp):
     return L['agent_ro_brief'].format(agent=at, path=raw)
 
 
+# (2.6.2, the council of 11.11: «READERS — bulk reading, logs, repos — Sonnet / Haiku, never Opus»; on 10.11 two readers ran on Opus by
+#  default and the weekly limit ended. A NOTE before the run, never a refusal — the owner: a warning, not a wall)
+READER_WORDS = re.compile(r'прочитай|прочти|изучи|просмотри|читател|обзор|перечисли|составь (?:список|опись)|найди,? где|'
+                          r'\bread\b|\bstudy\b|\bsurvey\b|summari[sz]e|\binventory\b|\breader\b|go through|\bscan\b', re.I)
+
+
+def agent_model(ti):
+    """the model an Agent call will run on: its «model», else the agent definition's «model:», else a built-in's
+    (contract.builtin_models), else «inherit» (the main session's — the expensive one)"""
+    m = str(ti.get('model') or '').strip().lower()
+    if m:
+        return m
+    at = str(ti.get('subagent_type') or 'general-purpose')
+    for d in (os.path.join(PROJECT, '.claude', 'agents'), os.path.join(os.path.expanduser('~'), '.claude', 'agents')):
+        f = os.path.join(d, at + '.md')
+        if os.path.isfile(f):
+            fm = re.search(r'^model:\s*(\S+)', read(f)[:2000], re.M)
+            return fm.group(1).lower() if fm else 'inherit'
+    return str(((CFG.get('contract') or {}).get('builtin_models') or {}).get(at, 'inherit')).lower()
+
+
+def reader_note(inp):
+    """PreToolUse on Agent / Task: a READING brief (read / study / survey …) given to a generic agent (contract.reader_types) that will
+    run on an expensive model (the main session's by default) → one line: take a cheap model"""
+    c = CFG.get('contract') or {}
+    if not CFG['modules'].get('contract') or not c.get('reader_note', True) or inp.get('tool_name') not in ('Agent', 'Task'):
+        return ''
+    if inp.get('agent_id') or inp.get('agent_type'):
+        return ''
+    ti = inp.get('tool_input') or {}
+    at = str(ti.get('subagent_type') or 'general-purpose')
+    if at not in c.get('reader_types', []) or not READER_WORDS.search(f"{ti.get('description') or ''} {str(ti.get('prompt') or '')[:1500]}"):
+        return ''
+    m = agent_model(ti)
+    if any(x in m for x in c.get('reader_models', [])) or any(x in m for x in ((CFG.get('advisor') or {}).get('models') or ['fable'])):
+        return ''                                     # (cheap already; or the advisor — a deliberate, counted call)
+    return L['reader_opus'].format(agent=at, model=m)
+
+
 def hook_agent_done(inp):
     """PostToolUse on the Agent tool: the parent hears at once that a subagent left no output file (the docs: the way to put text
     in front of the parent after a subagent returns)"""
@@ -1242,7 +1290,7 @@ def hook_tool(inp):
     """PreToolUse on every working tool (2.5): the path rule of 2.4 + act.py (materials, engines, attempts, recall by the action, the
     heartbeat) in ONE process — never a lock, never an exception to the session; 2.5.1: a brief with an output file sent to an agent
     that only reads is said here, before the run"""
-    extra = '\n'.join(x for x in (edit_text(inp), contract_brief_note(inp)) if x)
+    extra = '\n'.join(x for x in (edit_text(inp), contract_brief_note(inp), reader_note(inp)) if x)
     A = act()
     out = A.hook_act(inp, extra) if A else None
     if out is None and extra:
