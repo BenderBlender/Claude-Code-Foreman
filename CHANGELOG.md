@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.5.2 — 2026-11-11 · Environment launchers are unwrapped
+
+Reported the same evening by another session of the author's project: «variant 3 in 20 min: `lab_env_run.cmd`» — three DIFFERENT
+commands run through one environment launcher (`lab_env_run.cmd .venv\Scripts\python.exe …`); the signature was the `.cmd`, its
+«input» the `python.exe`.
+- A `.cmd` / `.bat` / `.sh` / `.ps1` whose FIRST argument is an interpreter or a launcher word (`python.exe`, `uv`, `env`, `call` …)
+  is unwrapped to what it runs, like `act.wrappers`: the signature is the script run inside (`bootstrap.py`); a launcher running no
+  script (`… python.exe -m pip install …`) runs nothing to count.
+- Tests: v25 103 (C18). All suites 350, green.
+
 ## 2.5.1 — 2026-11-11 · The subagent contract per session
 
 Found the same day on the author's machine, three sessions in one project: an Explore agent of one session stopped without its

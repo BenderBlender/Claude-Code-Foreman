@@ -581,13 +581,19 @@ def _script(t, args, here, depth):
     if bookkeeping(t):
         return []
     wrap = any(re.search(x, os.path.basename(t.replace('\\', '/')), re.I) for x in CFG.get('wrappers') or [])
+    # (2.5.2: an environment launcher — a .cmd / .bat / .sh / .ps1 whose FIRST argument is an interpreter or a launcher word:
+    #  «lab_env_run.cmd .venv\Scripts\python.exe bootstrap.py». 11.11: three different commands through one such .cmd were
+    #  «variant 3» of the .cmd, its «input» the python.exe)
+    first = unq(args[0]) if args else ''
+    envwrap = bool(re.search(r'\.(?:cmd|bat|sh|ps1)$', t, re.I)) and bool(first) and \
+        (bool(INTERP_TOKEN.match(first)) or first.lower() in PREFIXES)
     inner = []
     for a in args:                                    # (a QUOTED argument that is itself a command: gpu_guard.ps1 -Run "python x.py")
         if a[:1] in '"\'' and _starts_command(unq(a)):
             inner += runs(unq(a), here, depth + 1)
-    if not inner and wrap:
+    if not inner and (wrap or envwrap):
         inner = runs(' '.join(args), here, depth + 1)
-    if inner or wrap:
+    if inner or wrap or envwrap:
         return inner
     return [(t, _join(here, t), list(args))]
 

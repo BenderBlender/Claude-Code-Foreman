@@ -459,6 +459,15 @@ try:
              'powershell -File work/delete_old.ps1 -Target M:/old -Keep logs -DryRun', 'powershell -File work/delete_old.ps1 -Target M:/old -Keep logs')]
     check('C16 a dry run and the same run for real are one variant (four runs = two variants → no warning)',
           not any('вариант' in ctx(o) for o in outs), [ctx(o)[:80] for o in outs])
+    write(proj, 'tools/lab_env_run.cmd', '@echo off\r\nset UV_CACHE_DIR=M:\\uv\r\n%*\r\n')
+    outs = [bash(proj, 'sC16', c, 'Through the lab environment') for c in
+            ('tools\\lab_env_run.cmd .venv\\Scripts\\python.exe -m uv pip install pytest',
+             'tools\\lab_env_run.cmd .venv\\Scripts\\python.exe -m pytest -q', 'tools\\lab_env_run.cmd .venv\\Scripts\\python.exe work/bootstrap.py',
+             'tools\\lab_env_run.cmd .venv\\Scripts\\python.exe work/bootstrap.py --force')]
+    sigs = [r.get('sig') for r in act_rows(proj) if r.get('session') == 'sC16' and r.get('kind') == 'run']
+    check('C18 an environment launcher («lab_env_run.cmd .venv\\Scripts\\python.exe …», 11.11) → unwrapped: three different commands are '
+          'no variants of the .cmd; the script run is the signature', not any('вариант' in ctx(o) for o in outs)
+          and sigs and set(sigs) == {'bootstrap.py'}, [sigs, [ctx(o)[:60] for o in outs]])
     outs = [bash(proj, 'sC15', f'F=work/bands_to_groups.py; sed -n {i},40p $F', 'Read the script') for i in range(1, 5)]
     check('C17 a script named in a variable and read («F=x.py; sed -n … $F») → no run, no attempt',
           not any(r.get('session') == 'sC15' and r.get('kind') == 'run' for r in act_rows(proj)), [ctx(o)[:80] for o in outs])
