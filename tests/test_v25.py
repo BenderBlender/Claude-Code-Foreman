@@ -541,6 +541,31 @@ try:
     cfg['engines'].pop()
     io.open(cfgp, 'w', encoding='utf-8').write(json.dumps(cfg, ensure_ascii=False, indent=1))
 
+    # ---------------------------------------------------------------- K: the subagent contract per session (2.5.1)
+    # (11.11: an Explore agent of ANOTHER session stopped without its output file; this session's Stop was told and marked it seen,
+    #  so the real parent never heard it)
+    evp = os.path.join(proj, '.foreman', 'events.jsonl')
+    trA = transcript(os.path.join(base, 'agent_A.jsonl'), [('user', 'Найди камеры.\n\nФайл результата: `out/cams_A.md`', 1)])
+    o = hook(proj, 'subagent', {'session_id': 'sessA', 'agent_type': 'Explore', 'agent_id': 'agA', 'agent_transcript_path': trA, 'cwd': proj})
+    o2 = hook(proj, 'stop', {'session_id': 'sessB', 'transcript_path': '', 'last_assistant_message': 'готово'})
+    o3 = hook(proj, 'agent-done', {'session_id': 'sessB', 'tool_name': 'Agent', 'tool_input': {}})
+    check('K1 a read-only agent of session A stops without its file → session B is NOT told (Stop, PostToolUse)',
+          not o and 'cams_A' not in str(o2.get('reason', '')) and 'cams_A' not in ctx(o3), [o, o2, o3])
+    o = hook(proj, 'agent-done', {'session_id': 'sessA', 'tool_name': 'Agent', 'tool_input': {}})
+    check('K2 … its own session A is told, with the read-only text (the result is in its answer, not «resume the agent»)',
+          'cams_A' in ctx(o) and 'только читает' in ctx(o) and 'Продолжите того же агента' not in ctx(o), ctx(o))
+    o = hook(proj, 'stop', {'session_id': 'sessA', 'transcript_path': '', 'last_assistant_message': 'готово'})
+    check('K3 … once only', 'cams_A' not in str(o.get('reason', '')), o)
+    ev = [json.loads(l) for l in io.open(evp, encoding='utf-8') if l.strip()]
+    check('K4 the contract events carry the parent\'s session', any(e.get('kind') == 'agent_artifact_missing' and e.get('session') == 'sessA'
+                                                                  for e in ev), ev[-3:])
+    o = tool(proj, 'sessC', 'Agent', description='Map the cameras', subagent_type='Explore',
+             prompt='Найди, где задаются камеры.\n\nФайл результата: `out/cams_C.md`')
+    o2 = tool(proj, 'sessC', 'Agent', description='Map the cameras', subagent_type='general-purpose',
+              prompt='Найди, где задаются камеры.\n\nФайл результата: `out/cams_C.md`')
+    check('K5 a brief with an output file to an agent that only reads → said BEFORE the run; to one that writes → silent',
+          'только читает' in ctx(o) and 'cams_C' in ctx(o) and not denied(o) and 'только читает' not in ctx(o2), [ctx(o), ctx(o2)])
+
     # ---------------------------------------------------------------- 2.4 still: the path rule through the new hook
     code, out = fm(proj, 'rule', 'add', json.dumps({'when': 'editing the far config', 'do': 'keep the comments', 'quote': 'не трогай комментарии',
                                                     'paths': [os.path.join(base, 'far', '*.ini').replace('\\', '/')]}, ensure_ascii=False))

@@ -232,6 +232,8 @@ reviewed by a second model before any code was written:
   main session hears «agent X stopped without its output file — the phase is NOT done; resume the same agent» (`PostToolUse` on the
   Agent tool, or the Stop hook for a background agent). A fluent reply is not evidence that a phase ran; the file is. Agents that cannot
   write (Explore, Plan…) are only reported, never held; Claude Code's internal agents are left alone. Module `contract`.
+  2.5.1: only the session that started the agent hears about it (2.4–2.5.0 told whichever session stopped first, and the real parent
+  never did); a brief with an output file given to an agent that only reads is said before the run (`hook tool`).
 - **Rules with paths.** A rule may carry `"paths": ["src/ui/**"]`. Paths inside the project become Claude Code's own path-scoped
   rules — `.claude/rules/foreman-R-012.md`, generated and marked, following the rule's life (accept / change / drop). Paths outside
   the project (another drive, a sibling repository — not covered by Claude Code's rules) are shown by Foreman's edit hook

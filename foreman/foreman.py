@@ -138,6 +138,11 @@ T = {
            'agent_block': 'ПРОРАБ: в задании назван файл результата `{path}` — его нет. Запиши результат в этот файл (или ответь, почему записать не можешь): без файла этап не считается сделанным.',
            'agent_missing': 'ПРОРАБ: агент {agent} остановился без файла результата `{path}` — этап НЕ сделан. Продолжите того же агента (SendMessage), а не запускайте нового.',
            'agent_old': 'ПРОРАБ: агент {agent} не обновил `{path}` (файл старше задания) — проверьте, что результат свежий.',
+           'agent_readonly': ('ПРОРАБ: агент {agent} только читает — файл результата `{path}` он записать не мог. Результат — в его '
+                              'ответе: нужен файлом — запишите сами; в следующий раз задание с файлом — агенту, который пишет.'),
+           'agent_ro_brief': ('ПРОРАБ·контракт: агент {agent} только читает (записи файлов у него нет) — «Файл результата: `{path}`» он '
+                              'не выполнит. Дайте задание агенту, который пишет (general-purpose и т. п.), или уберите строку и возьмите '
+                              'результат из ответа.'),
            'rule_paths': 'ПРОРАБ·правило для этого файла {id}: {when} → {do}',
            'rules_export': 'Правила с путями → .claude/rules: записано {n}, убрано {m}{far}', 'rules_far': ', вне проекта (их покажет хук правки): {n}',
            'bad_json': 'не JSON: {err}'},
@@ -195,6 +200,11 @@ T = {
            'agent_block': 'FOREMAN: the brief names the output file `{path}` — it does not exist. Write your result to that file (or say why you cannot): without it the phase is not done.',
            'agent_missing': 'FOREMAN: agent {agent} stopped without its output file `{path}` — the phase is NOT done. Resume the same agent (SendMessage) rather than spawning a new one.',
            'agent_old': 'FOREMAN: agent {agent} did not update `{path}` (the file is older than the brief) — check that the result is fresh.',
+           'agent_readonly': ('FOREMAN: agent {agent} only reads — it could not write the output file `{path}`. The result is in its '
+                              'answer: write it yourself if a file is needed; next time give a brief with a file to an agent that writes.'),
+           'agent_ro_brief': ('FOREMAN·contract: agent {agent} only reads (it has no file writing) — «Output file: `{path}`» it cannot '
+                              'do. Give the brief to an agent that writes (general-purpose …), or drop the line and take the result from '
+                              'its answer.'),
            'rule_paths': 'FOREMAN·rule for this file {id}: {when} → {do}',
            'rules_export': 'Rules with paths → .claude/rules: written {n}, removed {m}{far}', 'rules_far': ', outside the project (the edit hook shows them): {n}',
            'bad_json': 'not JSON: {err}'},
@@ -954,7 +964,7 @@ def hook_stop(inp):
             write_jsonl(INBOX, rows)
             reasons.append(L['hook_stop'].format(list='; '.join(f"{r.get('id', '?')}: «{str(r.get('text', ''))[:120]}»" for r in fresh)))
     if CFG['modules'].get('contract'):
-        reasons.append(contract_news())
+        reasons.append(contract_news(str(inp.get('session_id') or '')))
     A = act()
     if A:
         reasons.append(A.stop_reason(inp))
@@ -1070,43 +1080,63 @@ def hook_subagent(inp):
     text, ts = _brief_of(tp)
     raw = contract_path(text)
     aid = inp.get('agent_id') or ''
-    append_event({'kind': 'agent_stop', 'agent_type': at, 'agent_id': aid, 'contract': raw})
+    # (2.5.1: every contract event carries the PARENT's session — a subagent's hooks get the session_id of the conversation that
+    #  started it; 2.4–2.5.0 told whichever session stopped first, and that session's «seen» hid it from the real parent — 11.11)
+    sid = str(inp.get('session_id') or '')
+    ev = {'agent_type': at, 'agent_id': aid, 'session': sid}
+    append_event({'kind': 'agent_stop', **ev, 'contract': raw})
     if not raw:
         return
     f = raw if os.path.isabs(raw) else os.path.join(inp.get('cwd') or PROJECT, raw)
     if os.path.exists(f):
         t0 = _ts(ts) if ts else None
         if t0 and os.path.getmtime(f) < t0 - 2:
-            append_event({'kind': 'agent_artifact_old', 'agent_type': at, 'agent_id': aid, 'path': raw})
+            append_event({'kind': 'agent_artifact_old', **ev, 'path': raw})
         return
     blocked = any(r.get('kind') == 'agent_block' and r.get('agent_id') == aid for r in jsonl(EVENTS)) if aid else False
     readonly = at in (CFG.get('contract') or {}).get('readonly_types', [])
     if not inp.get('stop_hook_active') and not blocked and not readonly:
         msg = L['agent_block'].format(path=raw)
-        append_event({'kind': 'agent_block', 'agent_type': at, 'agent_id': aid, 'path': raw})
+        append_event({'kind': 'agent_block', **ev, 'path': raw})
         log_hook('subagent', msg, agent=at)
         _emit({'decision': 'block', 'reason': msg})
         return
-    append_event({'kind': 'agent_artifact_missing', 'agent_type': at, 'agent_id': aid, 'path': raw})
+    append_event({'kind': 'agent_artifact_missing', **ev, 'path': raw, **({'readonly': True} if readonly else {})})
 
 
 def hook_subagent_start(inp):
-    """SubagentStart: the audit trail's first line (who was started, when)"""
+    """SubagentStart: the audit trail's first line (who was started, when, from which session)"""
     if CFG['modules'].get('contract') and inp.get('agent_type'):
-        append_event({'kind': 'agent_start', 'agent_type': inp.get('agent_type'), 'agent_id': inp.get('agent_id') or ''})
+        append_event({'kind': 'agent_start', 'agent_type': inp.get('agent_type'), 'agent_id': inp.get('agent_id') or '',
+                      'session': str(inp.get('session_id') or '')})
 
 
-def contract_news():
-    """the contract problems the parent has not been told yet; telling is an appended «seen» row (append-only, no rewrite, no lock)"""
+def contract_news(sid=''):
+    """the contract problems THIS session (the parent) has not been told yet; telling is an appended «seen» row (append-only, no
+    rewrite, no lock). 2.5.1: only the events of this session — another session's agent is never this session's news"""
     rows = jsonl(EVENTS)
     seen = {k for r in rows if r.get('kind') == 'contract_seen' for k in r.get('keys', [])}
-    new = [r for r in rows if r.get('kind') in ('agent_artifact_missing', 'agent_artifact_old')
+    new = [r for r in rows if r.get('kind') in ('agent_artifact_missing', 'agent_artifact_old') and (r.get('session') or '') == sid
            and f"{r.get('ts')}|{r.get('agent_id')}|{r.get('path')}" not in seen]
     if not new:
         return ''
-    append_event({'kind': 'contract_seen', 'keys': [f"{r.get('ts')}|{r.get('agent_id')}|{r.get('path')}" for r in new]})
-    return '\n'.join((L['agent_missing'] if r['kind'] == 'agent_artifact_missing' else L['agent_old']).format(
-        agent=r.get('agent_type'), path=r.get('path')) for r in new[:5])
+    append_event({'kind': 'contract_seen', 'session': sid, 'keys': [f"{r.get('ts')}|{r.get('agent_id')}|{r.get('path')}" for r in new]})
+    key = lambda r: 'agent_old' if r['kind'] == 'agent_artifact_old' else 'agent_readonly' if r.get('readonly') else 'agent_missing'  # noqa: E731
+    return '\n'.join(L[key(r)].format(agent=r.get('agent_type'), path=r.get('path')) for r in new[:5])
+
+
+def contract_brief_note(inp):
+    """PreToolUse on Agent / Task (2.5.1): a brief that names an output file, sent to an agent type that cannot write one (Explore,
+    Plan … — contract.readonly_types) — said BEFORE the run, not after a wasted one (11.11: an Explore agent «without its output
+    file», resumed in vain)"""
+    if not CFG['modules'].get('contract') or inp.get('tool_name') not in ('Agent', 'Task'):
+        return ''
+    ti = inp.get('tool_input') or {}
+    at = str(ti.get('subagent_type') or '')
+    raw = contract_path(str(ti.get('prompt') or ''))
+    if not raw or at not in (CFG.get('contract') or {}).get('readonly_types', []):
+        return ''
+    return L['agent_ro_brief'].format(agent=at, path=raw)
 
 
 def hook_agent_done(inp):
@@ -1114,7 +1144,7 @@ def hook_agent_done(inp):
     in front of the parent after a subagent returns)"""
     if not CFG['modules'].get('contract'):
         return
-    text = contract_news()
+    text = contract_news(str(inp.get('session_id') or ''))
     if text:
         log_hook('agent-done', text)
         _emit({'hookSpecificOutput': {'hookEventName': 'PostToolUse', 'additionalContext': text}})
@@ -1204,8 +1234,9 @@ def hook_edit(inp):
 
 def hook_tool(inp):
     """PreToolUse on every working tool (2.5): the path rule of 2.4 + act.py (materials, engines, attempts, recall by the action, the
-    heartbeat) in ONE process — never a lock, never an exception to the session"""
-    extra = edit_text(inp)
+    heartbeat) in ONE process — never a lock, never an exception to the session; 2.5.1: a brief with an output file sent to an agent
+    that only reads is said here, before the run"""
+    extra = '\n'.join(x for x in (edit_text(inp), contract_brief_note(inp)) if x)
     A = act()
     out = A.hook_act(inp, extra) if A else None
     if out is None and extra:

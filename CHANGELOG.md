@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.5.1 — 2026-11-11 · The subagent contract per session
+
+Found the same day on the author's machine, three sessions in one project: an Explore agent of one session stopped without its
+output file, and ANOTHER session's Stop hook was told («the phase is NOT done — resume the same agent») — an agent it never started.
+Its «seen» row then hid the news from the real parent. The bug came with 2.4.
+- **Per session:** every contract event (`agent_start`, `agent_stop`, `agent_block`, `agent_artifact_missing` / `_old`) carries the
+  parent's `session` (a subagent's hooks get the session_id of the conversation that started it); `contract_news(sid)` — the Stop
+  hook and `PostToolUse(Agent)` — tells only that session. Old rows without a session are no one's news.
+- **An agent that only reads** (`contract.readonly_types`: Explore, Plan …): its missing file is reported as «it could not write it —
+  the result is in its answer», not «resume the same agent»; and a brief with an output file sent to such an agent is said BEFORE
+  the run, in `hook tool` (a note, never a refusal).
+- Tests: v25 102 (K1–K5). All suites green.
+
 ## 2.5.0 — 2026-11-11 · Knowledge at the moment of action (built 09.11, revised after a model council 11.11)
 
 **Revised before the release** — a model council (Fable 5.2 · Astra / ChatGPT · Argon / Gemini, 11.11) read the code and the replay of
