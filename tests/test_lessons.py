@@ -92,8 +92,10 @@ try:
     settings = json.load(io.open(os.path.join(proj, '.claude', 'settings.local.json'), encoding='utf-8'))
     check('the prompt hook is «hook prompt»', 'hook prompt' in json.dumps(settings))
     cfg = json.load(io.open(f('config.json'), encoding='utf-8'))
-    check('modules: promises + lessons on, board and panel off (2.4: contract and rules_paths on)', cfg['modules'] == {
-        'promises': True, 'lessons': True, 'board': False, 'panel': False, 'contract': True, 'rules_paths': True}, cfg.get('modules'))
+    check('modules: promises + lessons on, board and panel off (2.4: contract and rules_paths on; 2.5: materials, attempts, engines on, '
+          'act_recall and heartbeat off — the council of 11.11)',
+          cfg['modules'] == {'promises': True, 'lessons': True, 'board': False, 'panel': False, 'contract': True, 'rules_paths': True,
+                             'materials': True, 'act_recall': False, 'heartbeat': False, 'attempts': True, 'engines': True}, cfg.get('modules'))
 
     # the empty start — an ordinary message costs 0 characters; an ask gets only the inbox note
     o = hook(proj, 'prompt', {'prompt': 'интересно, как вообще устроены такие системы памяти у агентов'})

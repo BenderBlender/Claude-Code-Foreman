@@ -1,5 +1,116 @@
 # Changelog
 
+## 2.5.0 — 2026-11-11 · Knowledge at the moment of action (built 09.11, revised after a model council 11.11)
+
+**Revised before the release** — a model council (Fable 5.2 · Astra / ChatGPT · Argon / Gemini, 11.11) read the code and the replay of
+the case's OWN transcript (the session where 09.11 happened ran it: 09.11 in two windows and the ordinary day 10.11, 1 142 calls). The
+replay found the noise and the false refusals; the council decided: A on; C without a refusal and without the wrappers; D a note only;
+B and ♥ switched off until they are fixed and measured again.
+- **What a command RUNS** (new in `act.py`: `runs()`): the command is split into simple commands outside quotes (`;` `|` `&&` `||`
+  line ends); in each, the script after the interpreter (options and their bare values skipped — `python -X utf8 x.py`,
+  `powershell -ExecutionPolicy Bypass -File x.ps1`, `blender -b a.blend --python x.py`), after `&` / `.`, or at the command's start;
+  the code of `bash -lc '…'`, `powershell -Command …`, `cmd /c …` is read as a command line again (`python -c` code is code); a
+  preceding `cd` gives a relative script its folder. 2.5 took the FIRST script file named anywhere in the line: on 10.11
+  `gpu_guard.ps1 -Run "…"` counted as gpu_guard, `Get-Content a.py | python b.py` as a.py.
+- **Wrappers:** a script whose QUOTED argument starts with a command is unwrapped to the script inside
+  (`gpu_guard.ps1 -Run "wsl … bash run.sh"` → `run.sh`); `act.wrappers` names wrappers to unwrap even unquoted; a wrapper with no job
+  inside (`gpu_guard.ps1 -Status`) runs nothing.
+- **Bookkeeping** (`act.bookkeeping`, default Foreman itself; a project adds its registry and rule lookups): neither work (A), an
+  attempt (C) nor an engine's use (D). 10.11: the registry was 5 of 18 «attempts» and the one false refusal of A. A script file named in
+  a command (`Get-Content x.ps1`) is no longer «work» either.
+- **C · attempts:** the signature is the script the command runs (above), and a variant is the same script ON THE SAME INPUT (its first
+  path argument that is not an output — `--out`, `-o`, `--save` … skipped); a dry run (`-DryRun`, `--dry-run`, `-WhatIf`) and the real
+  run are one variant; the project's looking tools (`act.look_tools`: measuring, sheets, pages, screen shots) never count; a script
+  named in a variable (`F=…/x.py; sed -n … $F`) is not run. Fable counted 12 of 18 warnings of 10.11 false; the first revision (rc1)
+  still gave 13 on 09.11 with 5 real loops — measure / sheet / page tools on new results, a dry run, a read through a variable.
+- **D · engines:** an engine matches only the path of the script a command RUNS (with its `cd` folder) — never the description, a path
+  in an argument, a reading, the body of a heredoc / here-string (`cat > run.sh <<'EOF' … EOF` writes a script, `python - <<EOF`
+  feeds code: rc1 had 3 such notes of 4). 10.11's two refusals: «Measure the size of every Hunyuan folder» and a registry probe naming
+  `p3sam_run.py`. The author's project dropped `deny_first`. A code file written from the shell (`cat > x.sh`, `Out-File x.py`) is
+  still work for A.
+- **B · recall by the action — a switch, OFF by default** (`modules.act_recall`). When on: the trigger is the situation WITHOUT its
+  history (a dash before «failed …» / «CORRECTION …» / a date) + the Keys (its own cell, or borrowed from the same row in a card of
+  `act.keys_books`); the BM25 block is built from the same; `recall_min_score` 10 (it was 0); silent when the rule has a guard of its
+  own (`act.guard_marks`: a hook, a script that refuses) or the action already runs the tool the rule names (Fable: 17 of 60 notes of
+  10.11 stood on the «seven views» tools). 10.11 measured 5.3 per 100 calls; the council's bar to switch it on: ≤ 1.5, ≥ 60 % to the point.
+- **♥ · heartbeat — a switch, OFF by default** (`modules.heartbeat`). When on: right after a compaction, or when the owner has been
+  silent ≥ `beat_silence_min` (30) and `beat_min` (45) passed since the last beat; WORKING calls only (never reading, a search, the
+  plan — 14 of 42 beats of 10.11); rotation — the rules shown least today first (72 % of 10.11's beats were the same three rows); ≤
+  `beat_day_max` (10) a day. The owner's silence comes from `owner.jsonl` (the prompt hook).
+- **`replay --tools`:** sees the compactions in a transcript (the heartbeat's trigger); prints the total notes per 100 calls, the
+  modules, a line per day, the attempts by script and the engines; `--show` prints the command and B's score.
+- **Replay of the case's own transcript after the revision** (default modules: B and ♥ off; 09.11 12:00–17:40 · 17:40–20:45 · 10.11):
+  - rc1: 797 · 298 · 1 142 calls; all notes 1.8 · 0.7 · 0.6 per 100; refusals 1 (real: the first working action after «study
+    first» — writing a runner before the study) · 0 · 0; C 12 + 1 · 5 (real loops 5 of 13, 0 of 5 — failed); D 1 · 1 · 2 (1 to the
+    point); the loop of 09.11 (`bands_to_groups.py`) warned on its 3rd real run;
+  - **the release (rc2): all criteria met** — all notes 0.5 · 0 · 0.1 per 100 calls; refusals 1 (the same real one) · 0 · 0, no
+    false refusal; C 2 · 0 · 0, both real loops (`bands_to_groups.py` on one picture — warned on its 3rd real run; the glasses' click
+    loop of `p3click.py`); D 1 · 0 · 1, both real runs (P3-SAM under the GPU guard, «Замкнуть»); «study first» caught. The price:
+    a sweep of settings over DIFFERENT inputs is no longer marked — by the definition of a variant that is right;
+  - for information, B and ♥ on (rc1): B 1.3 · 2.3 · 2.5 per 100, to the point ~2/10 · ~4/7 · ~12/28, scores 14–79 — the bar does not
+    separate (the highest note was false: product names like «Studio» in the triggers) → B stays off; ♥ 2 · 0 · 7 a day, 6 and 17
+    different rules (its own criteria met; with ♥ on the total was 2.0 · 0.7 · 1.2 per 100).
+- install.py / foreman.py: `act_recall` and `heartbeat` default to `false` (an update keeps what the project set); rule 12 of the
+  CLAUDE.md section says the hot rule comes only if the owner switched it on.
+- Tests: v25 97 (new: A26, B0, B9–B12, ♥ rewritten H1–H9, C9–C17, D13–D18, Q4, the install defaults); lessons: the new module
+  defaults. All suites 344, green.
+
+### As built on 09.11
+
+The case (the author's project, 09.11): one autonomous turn of three hours — hundreds of tool calls, no new message, so no hook ever
+reminded. Links the owner said to study FIRST were read after the work; a hot rule («never judge by one view») broke a third time; a
+tool's documented click mode was forgotten; one script ran seven times in fifteen minutes. The knowledge existed — 2.0–2.4 bring it up
+on the OWNER'S MESSAGE, and there was none. The plan was reviewed by Fable before any code (`FABLE_2.5_review.md` in the author's
+project): its defaults are kept — notes on, refusals only where the owner said «first» or the project switched them on, the hot rules
+only, a time budget per call.
+- **`act.py`, one `PreToolUse` hook «tool»** on Bash|PowerShell|Edit|Write|MultiEdit|NotebookEdit|Agent|Task. It also does the 2.4 path
+  rule, so one process per call; no registry lock; `hook edit` still works for 2.4 settings. Journal `.foreman/act.jsonl` (per session,
+  pruned to 3000 rows); every line shown is in `hooklog` as hook «tool».
+- **A · materials** (`materials`):
+  - a sentence of the owner's with a study verb AND a URL / path / `[Image #N]` / a web topic within ± 200 characters → `M-0001` in
+    `.foreman/materials.jsonl` (+ the active item when promises are on);
+  - «сначала / прежде / first / before» in that sentence → the first working action of the session is refused once (a program run,
+    a code-file edit, an agent not read-only whose brief does not name the source);
+  - `material read M-… --study <notes>`: every source named in the notes, «taken» and «not read» said, and — when the session's
+    transcript is found — every source opened after the message (Read / fetch / browser / `git clone`); a web topic needs ≥ 2 links;
+  - `material skip --why` (≥ 10 chars, a ledger line); `material list`;
+  - Stop once per 20 min with «opened k/n»; the session brief lists what is not studied.
+- **B · recall by the action** (`act_recall`):
+  - the query: a program run's description + its scripts' names; an agent's description + 300 characters of the brief; an edit of a
+    file named like a tool that LOOKS (`act.check_files`) + 300 characters of the new text;
+  - only HOT rules: `rules.jsonl` level ≥ 2 + the table rows of `act.hot_books`;
+  - a rule's trigger = its «when» without the owner's quotes; the generic verbs of descriptions and a rule's history words
+    («correction», «the producer», «again», «failed») never count; ≥ 2 shared words, BM25 over the hot rules for the order;
+  - prints the DO cell; ≤ 2 rules; one rule once per 30 min per session; reading / listing commands never searched.
+- **♥ · heartbeat** (`heartbeat`): the session's first call starts the clock silently; every 20 min (and the call right after a
+  compaction) the ≤ 3 hot rules nearest to the last ~40 actions, ≤ 650 chars.
+- **C · attempts** (`attempts`):
+  - the signature = the script after an interpreter; a variant = other arguments or a newer script mtime; the same command = the same
+    attempt; the exit code is no criterion;
+  - the 3rd variant in 20 min → «stop, 2–3 different approaches»;
+  - `act.attempts_deny` (off) refuses the 5th once, until `OPTIONS*.md` (cwd or a folder the command names), `# options: …` in the
+    command, or `attempts think <script> --options "…"`;
+  - tests, npm / pip / make / `foreman.py` never count (`act.attempt_ignore`).
+- **D · engines** (`engines`):
+  - config `engines: [{name, match, doc, section, deny_first}]` — `doc` may be a list (all must be read; the section comes from the doc
+    that has it), `section` a heading or a table row of a card; a use = the description and the PATHS the command runs (a ledger line
+    that merely mentions the engine is none — measured);
+  - the doc «read» = a Read / `cat` / `Get-Content` of it after the last compaction in the session's transcript;
+  - not read → its section in front of Claude, once per session; `deny_first` → refused once instead;
+  - `engine ack <name> --modes "…"` (≥ 15 chars) passes for `ack_hours` (12); `# engine-read: …` in the command passes.
+- **`replay --tools <transcript> [--since] [--until] [--show] [--json]`**: B / ♥ / C / D and A's gate over a real session in its own
+  time, nothing written; streamed line by line (a real transcript is hundreds of MB).
+- **Measured** on the author's ordinary day (425 calls, no corrections):
+  - recall by the action 0.9 per 100 calls — 5.7 before the history words and the quotes were taken out of the triggers;
+  - the heartbeat 9×; attempt warnings 5 (each a real loop of three variants); refusals 0.
+  - The modelled case: all four rows caught. Time per call: median ≈ 0.15 s ordinary, ≈ 0.3 s with a hot-rule search.
+  - The replay of the case's own transcript was not run: Claude Code's protection stopped reading another session's transcript.
+- **Fixed:** a rule book on another drive (`lessons.rules_extra` absolute) made `relpath` raise and took the whole recall down
+  (`recall._rel`). `urllib` is imported only for a `get:` probe (−30–45 ms on every hook start).
+- install.py: copies `act.py`; `act` / `engines` in config.json; `--modules` knows the five new modules; the CLAUDE.md section has rule
+  12 «knowledge at the moment of action».
+- Tests: v25 70 (install 4, A 25, B 8, ♥ 5, C 8, D 12, R 1, the replays 3, time 2); lessons: the modules dict. All suites 317.
+
 ## 2.4.1 — 2026-11-08 · The panel survives a Codex update; a semantic layer measured and not adopted
 
 - **The panel finds a moved CLI.** `panel detect` writes the absolute path it found into config.json, and the Codex app moves

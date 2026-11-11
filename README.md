@@ -260,6 +260,78 @@ The numbers are in `CHANGELOG.md`. If your rule book has no tuned Keys or lexico
 your own situations before trusting it. 2.4.1 itself fixes the panel after a Codex update: the program is found by name when its
 saved path is gone.
 
+## Knowledge at the moment of action (2.5)
+
+Foreman 2.0–2.4 bring the rules and the owner's materials up when the OWNER WRITES. The case that made 2.5: one long autonomous turn
+in the author's project — three hours, hundreds of tool calls, no new message, so no reminder. In it:
+- links the owner had given with «study these first» were read after the work, not before;
+- a rule hot for weeks («never judge by one view») was broken a third time;
+- a tool's documented click mode was forgotten;
+- the same script ran seven times in a quarter of an hour.
+
+The knowledge was there; nothing brought it up at the moment of the action. 2.5 answers on the action itself — one `PreToolUse`
+hook, `hook tool`, on Bash / PowerShell / Edit / Write / Agent. Each piece comes once, with a visible exit: others' limits are
+advice, not walls. The plan was reviewed by a second model (Fable) before any code; its defaults are the ones below.
+
+- **The owner's materials** (module `materials`). A sentence of the owner's with «study / read / look at» and a link, a path, an
+  image or a web topic becomes `M-0001` in `.foreman/materials.jsonl`, with a note in front of Claude. «First / before» in that
+  sentence arms a gate: the first WORKING action before the study (a program run, a code edit, an agent sent to work) is refused once.
+  Reading, fetching, writing notes and an agent whose brief names the source pass. Studied means two things:
+  - the transcript shows each source opened (a Read, a fetch, the browser, a `git clone`);
+  - the notes name every source and say what was taken and what was not read: `foreman.py material read M-0001 --study notes.md`.
+  Or `material skip M-0001 --why "…"` (a ledger line). The Stop hook and the brief list what is not studied.
+- **Recall by the action** (module `act_recall`, **off by default** — a switch since the council of 11.11). A program run (its
+  description and the names of the scripts it runs), an agent's brief, or the edit of a tool that LOOKS for you (a file named view /
+  render / sheet / preview …) is searched against the HOT rules only: `rules.jsonl` level ≥ 2 and the rows of the books in
+  `act.hot_books`. A rule's trigger is its situation WITHOUT its history (a dash before «failed …», «CORRECTION …», a date) plus its
+  Keys — its own Keys cell, or the Keys of the same row in a card of `act.keys_books` (by default the lessons' rule books). A rule
+  shows when the trigger shares ≥ 2 words with the action (generic verbs removed) and its score reaches `act.recall_min_score`. It is
+  silent when the rule has a guard of its own (a hook, a script that refuses — `act.guard_marks`) or the action already runs the tool
+  the rule names. It shows what to DO, not the heading; each rule at most once per 30 minutes, ≤ 2 rules. Reading, listing and the
+  bookkeeping are never searched.
+- **The heartbeat** (module `heartbeat`, **off by default**). A rule fades in a long turn by itself, and no word calls it back. So
+  right after a compaction, or when the owner has been silent ≥ 30 minutes (and ≥ 45 since the last beat), a WORKING call brings
+  back the ≤ 3 hot rules nearest to the last ~40 actions, ≤ 650 characters — the least shown today first, ≤ 10 beats a day. Never on
+  reading, a search or the plan.
+- **Attempts** (module `attempts`). Variants of the same script ON THE SAME INPUT — other arguments, or a newer script — within 20
+  minutes: the 3rd gets «stop: what exactly is wrong? 2–3 different approaches». The input is the first argument that is a path and
+  not an output (`--out`, `-o`, `--save` … are skipped): the same tool on another result is another job, not a variant. A dry run
+  (`-DryRun`, `--dry-run`, `-WhatIf`) and the same run for real are one variant. The project's LOOKING tools (`act.look_tools`:
+  measuring, drawing sheets, building pages, screen shots — run on every new result by design) never count. A heredoc or a
+  here-string is text handed to a program, so a script it writes runs nothing. The script is the one the command RUNS: after the interpreter
+  (`Get-Content a.py | python b.py` → `b.py`), inside `bash -lc '…'` / `powershell -Command …` / `cmd /c …`, through a wrapper
+  (`gpu_guard.ps1 -Run "python x.py"` → `x.py`: a script whose quoted argument is itself a command, or one named in `act.wrappers`).
+  The bookkeeping — Foreman and what `act.bookkeeping` names (the project's registry, its rule lookups) — is neither work nor an
+  attempt nor an engine's use. The exact same command again is the same attempt. The exit code is no criterion — the case's seven
+  runs all exited 0. Test runners never count. With `act.attempts_deny` the 5th variant is refused once, until the options are
+  written: an `OPTIONS*.md` next to the work, `# options: …` in the command, or `foreman.py attempts think <script> --options "…"`.
+- **Engines** (module `engines`). The project's map `"engines": [{"name", "match", "doc", "section", "deny_first"}]`. The first RUN of
+  an engine's script in a session (the path of the script run, with the folder of a preceding `cd`), when its doc was not read since
+  the last compaction, brings the doc's section in front of Claude (e.g. «## Modes»; `doc` may be a list, `section` may be a card's
+  table row). With `deny_first` it is refused once instead. A path in an argument, a reading of the engine's files, the description,
+  a text that only mentions the engine — none is a use. `foreman.py engine ack <name> --modes "…"` names the modes and passes for 12
+  hours.
+
+**The quietness check.** `foreman.py replay --tools <transcript.jsonl> [--since …] [--until …] [--show]` runs all of it over a real
+session in its own time and writes nothing. The author's project, 425 calls of an ordinary day (no corrections):
+- rules by the action: 0.9 per 100 calls (5.7 before the history words were made generic);
+- the heartbeat: 9 times;
+- attempt warnings: 5, every one a real loop of three variants;
+- refusals: 0.
+
+On the modelled case all four rows were caught. The time per call: median ≈ 0.15 s for an ordinary one, ≈ 0.3 s when the hot rules
+are searched.
+
+**After the model council (11.11)** — the replay of the case's REAL transcript (09.11 in two windows and the ordinary day 10.11;
+797 · 298 · 1 142 calls; recall by the action and the heartbeat off):
+- all notes 0.5 · 0 · 0.1 per 100 calls; false refusals 0 (the one refusal was real: a runner written before the study);
+- attempts 2 · 0 · 0, both real loops (09.11's loop marked on its third real run); engines 1 · 0 · 1, both real runs.
+The first revision (rc1) gave 13 attempt warnings on 09.11, 5 of them real; recall by the action switched on gave 1.3–2.5 per 100,
+~20–57 % to the point — so it is off by default.
+
+Also fixed: a rule book on another drive than the project (`lessons.rules_extra` with an absolute path) took the whole recall down
+(`relpath` across drives).
+
 ## Foreman vs. the alternatives
 
 **Foreman is not another task manager.** Task managers track the work an agent plans. Foreman guards the promises *you* made, in your own words, and proves they were kept. It's the part that's missing when the plan is fine but Monday's request still disappears.
@@ -437,6 +509,21 @@ In Windows PowerShell 5.1 the quotes inside a JSON argument get stripped: put th
 | `panel` | `{"ask_each_time": true, "timeout_s": 600, "members": [...]}` | the model panel (module `panel`, off by default): ask before a brief leaves the machine, one time limit for the whole round, the members found at install. A member: `enabled`, `model`, `params` (merged into an API request: effort, temperature…), `args` (a CLI's own flags, e.g. a model or an effort), `strip_env`, `num_ctx` (Ollama's context, default 32768 — sent through Ollama's own `/api/chat`, since its OpenAI-compatible address cannot set it). Placeholders in a CLI's `cmd`: `{out}` (the answer file), `{dir}` (its empty working folder). The installer asks about the panel once; `install.py … --ask-panel` asks again. Windows: a `.cmd` shim runs through `cmd.exe`, so a project path with `%` in it may be expanded — keep such paths out. |
 | `accept_days` | `14` | how old the owner's words may be for an acceptance |
 | `lessons.memory_dir` | `"auto"` | Claude Code's memory folder (read-only); `auto` finds `~/.claude/projects/<project>/memory` |
+| `modules.materials` / `attempts` / `engines` | `true` | three parts of 2.5 (one `PreToolUse` hook «tool»; all five off → the 2.4 edit hook) |
+| `modules.act_recall` / `heartbeat` | `false` | recall by the action and the heartbeat — switches, off until the owner turns them on (the council of 11.11) |
+| `act.hot_books` | `[]` | globs of rule books whose table rows are HOT (recall by the action, the heartbeat); `rules.jsonl` level ≥ 2 is always hot |
+| `act.keys_books` | `null` | globs of books whose rows carry Keys cells — a hot row without Keys borrows them (`null` = `lessons.rules_extra`) |
+| `act.recall_every_min` / `recall_rules` / `recall_min_trigger` / `recall_min_score` | `30` / `2` / `2` / `10` | one rule at most once per N minutes; rules per action; trigger words in common; the BM25 bar (its scale grows with the book — tune it from `replay --tools … --show`) |
+| `act.guard_marks` | hooks, guards, «refuses» / «denies» | a regex: a rule whose text matches has a guard of its own — recall by the action stays silent |
+| `act.check_files` | `"view\|render\|sheet\|…"` | which edited files are tools that LOOK (their edit is searched too) |
+| `act.beat_min` / `beat_silence_min` / `beat_day_max` / `beat_rules` / `beat_chars` | `45` / `30` / `10` / `3` / `650` | the heartbeat: minutes between beats; the owner's silence; beats a day; rules; characters |
+| `act.attempt_window_min` / `attempt_warn` / `attempt_block` / `attempts_deny` | `20` / `3` / `5` / `false` | attempts: the window, the warning, the refusal (off by default) |
+| `act.attempt_ignore` | test runners, npm, pip, `foreman.py` | regexes of commands never counted |
+| `act.bookkeeping` | `["foreman\\.py"]` | regexes of simple commands that are bookkeeping — never work (materials), an attempt or an engine's use (add the project's registry) |
+| `act.wrappers` | `[]` | regexes of wrapper scripts whose arguments are the real job (`gpu_guard\\.ps1`); a script whose QUOTED argument starts with a command is unwrapped anyway |
+| `act.look_tools` | `[]` | regexes of script names that LOOK at results (`^measure_`, `^compare_page\\.py$` …) — never an attempt |
+| `act.gate_hours` / `remind_min` / `ack_hours` | `8` / `20` / `12` | a «first» material gates for N hours; the Stop reminder period; how long an `engine ack` holds |
+| `engines` | `[]` | `[{"name": "P3-SAM", "match": "p3.?sam", "doc": "docs/P3SAM.md", "section": "Modes", "deny_first": false}]` |
 
 ## Uninstall
 

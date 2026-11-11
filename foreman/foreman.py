@@ -40,7 +40,18 @@ PROOF THAT STILL HOLDS (2.4):
                                                 subagent stops (one block, then the parent is told) — module «contract»
   hook edit · rules export                      a rule's "paths": inside the project → .claude/rules/foreman-R-….md; outside → shown
                                                 before an edit of a matching file, once per session — module «rules_paths»
-Standard library only, Python 3.8+. Made by Claude (Anthropic) with a film producer, 2026-11-01 (2.0 — 2026-11-04, 2.4 — 2026-11-07) — see README.md."""
+KNOWLEDGE AT THE MOMENT OF ACTION (2.5, act.py — one PreToolUse hook «tool» on every working tool call):
+  the owner's materials («study … first» + links → M-…, the first working action before the study refused once):
+      material list | read M-… --study <notes> | skip M-… --why "…"
+  attempts (variants of the script a command RUNS — after the interpreter, through a wrapper; bookkeeping never counts):
+      attempts [list] | think <script> --options "…"
+  engines (config «engines»: an engine's notes before the first RUN of its script in a session):  engine list | ack <name> --modes "…"
+  switches, off by default (the council of 11.11): recall by the action (modules.act_recall — hot rules, history-free triggers + Keys,
+      a score bar, silent when the rule has its own guard) · the heartbeat (modules.heartbeat — after a compaction or when the owner is
+      silent ≥ 30 min, rotated, ≤ 10 a day, never on reading)
+  replay --tools <transcript.jsonl> [--since …] [--until …] [--show] [--json]   all of it over a real session, nothing written
+Standard library only, Python 3.8+. Made by Claude (Anthropic) with a film producer, 2026-11-01 (2.0 — 2026-11-04, 2.4 — 2026-11-07,
+2.5 — 2026-11-09) — see README.md."""
 import contextlib
 import datetime as dt
 import fnmatch
@@ -53,8 +64,6 @@ import re
 import subprocess
 import sys
 import time
-import urllib.error
-import urllib.request
 import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -201,7 +210,10 @@ def config():
         pass
     c['council'] = {**council, **(c.get('council') or {})}
     # (2.0: modules switch whole parts on/off — an «off» module adds nothing to any hook; budgets are hard caps in characters)
-    c['modules'] = {'promises': True, 'lessons': True, 'board': False, 'contract': True, 'rules_paths': True, **(c.get('modules') or {})}
+    # (2.5: knowledge at the moment of action — act.py: materials, recall by the action, the heartbeat, attempts, engines; recall by
+    #  the action and the heartbeat are switches, OFF until the owner turns them on — the council of 11.11, measured on a real day)
+    c['modules'] = {'promises': True, 'lessons': True, 'board': False, 'contract': True, 'rules_paths': True, 'materials': True,
+                    'act_recall': False, 'heartbeat': False, 'attempts': True, 'engines': True, **(c.get('modules') or {})}
     # (2.4: agent types that cannot write a file — the contract only warns for them, never blocks)
     c['contract'] = {'readonly_types': ['Explore', 'Plan', 'claude-code-guide', 'statusline-setup', 'foreman-judge'], **(c.get('contract') or {})}
     c['budget'] = {'prompt_chars': 1200, 'session_chars': 2000, 'recall_hits': 3, 'recall_chars': 700, 'hot_rows': 5, **(c.get('budget') or {})}
@@ -289,6 +301,22 @@ def lessons():
     return _lessons or None
 
 
+_act = None
+
+
+def act():
+    """the action-time module (act.py, 2.5), or None when it is not installed"""
+    global _act
+    if _act is None:
+        _act = False
+        if os.path.exists(os.path.join(HERE, 'act.py')):
+            sys.path.insert(0, HERE)
+            import act as _a
+            _a.setup(sys.modules[__name__])
+            _act = _a
+    return _act or None
+
+
 def today():
     return dt.date.today().isoformat()
 
@@ -346,9 +374,10 @@ def probe(p):
             return word.lower() in read(path_of(f)).lower()
         if kind == 'get':
             try:
+                import urllib.request
                 urllib.request.urlopen(rest, timeout=8)
                 return True
-            except urllib.error.HTTPError as e:
+            except __import__('urllib.error').error.HTTPError as e:
                 return e.code < 400
             except Exception:
                 return _unknown(p, 'down')                  # (down → «unknown», never «not built»)
@@ -824,7 +853,9 @@ def hook_prompt(inp):
         reflect = R.reflector(cls)[:450]
         if len(cls['text']) >= 25:
             pk = R.pack(cls['text'][:600])
-    text = fit([events, note, reflect, pk], CFG['budget']['prompt_chars'])
+    A = act()
+    mat = A.on_prompt(prompt, inp) if A else ''              # (2.5: the owner's materials — «изучи …» with links / paths)
+    text = fit([events, note, mat, reflect, pk], CFG['budget']['prompt_chars'])
     if text:
         log_hook('prompt', text, head=prompt[:120])
         _emit({'hookSpecificOutput': {'hookEventName': 'UserPromptSubmit', 'additionalContext': text}})
@@ -924,6 +955,9 @@ def hook_stop(inp):
             reasons.append(L['hook_stop'].format(list='; '.join(f"{r.get('id', '?')}: «{str(r.get('text', ''))[:120]}»" for r in fresh)))
     if CFG['modules'].get('contract'):
         reasons.append(contract_news())
+    A = act()
+    if A:
+        reasons.append(A.stop_reason(inp))
     R = lessons()
     if R:
         last = str(inp.get('last_assistant_message') or '')
@@ -968,7 +1002,11 @@ def hook_session(inp):
     text = brief(run()) if CFG['modules'].get('promises') else ''   # (promises off — e.g. a project with its own registry: no empty brief)
     if inp.get('source') == 'compact' and text:
         text = L['compact'] + '\n' + text
-    text = fit([text[:1200]] + lessons_lines() + [owner_events() if CFG['modules'].get('board') else ''], CFG['budget']['session_chars'])
+    A = act()
+    if A and inp.get('source') == 'compact':
+        A.compacted(str(inp.get('session_id') or ''))         # (2.5: the next tool call brings the hot rules back at once)
+    text = fit([text[:1200]] + lessons_lines() + [A.brief_line() if A else ''] + [owner_events() if CFG['modules'].get('board') else ''],
+               CFG['budget']['session_chars'])
     if text:
         log_hook('session', text, source=inp.get('source'))
         _emit({'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': text}})
@@ -1132,31 +1170,49 @@ def rules_export(R=None):
     return n, m, far
 
 
-def hook_edit(inp):
-    """PreToolUse (Edit / Write / MultiEdit / NotebookEdit): an active rule whose path OUTSIDE the project matches the file — once per
-    session and rule; never blocks, no lock"""
-    if not CFG['modules'].get('rules_paths'):
-        return
+def edit_text(inp):
+    """an active rule whose path OUTSIDE the project matches the edited file — once per session and rule ('' when none)"""
+    if not CFG['modules'].get('rules_paths') or inp.get('tool_name') not in (None, 'Edit', 'Write', 'MultiEdit', 'NotebookEdit'):
+        return ''
     ti = inp.get('tool_input') or {}
     f = ti.get('file_path') or ti.get('notebook_path')
     R = lessons() if f else None
     if not R:
-        return
+        return ''
     fa = os.path.normcase(os.path.abspath(f)).replace('\\', '/')
     hits = [r for r in R.jsonl(R.RULES) if r.get('status') == 'active'
             and any(_outside(p) and fnmatch.fnmatch(fa, os.path.normcase(os.path.abspath(p)).replace('\\', '/')) for p in _paths(r))]
     if not hits:
-        return
+        return ''
     sid = str(inp.get('session_id') or '')
     shown = {x.get('rule') for x in jsonl(SHOWN) if x.get('session') == sid}
     new = [r for r in hits if r['id'] not in shown]
     if not new:
-        return
+        return ''
     rows = jsonl(SHOWN)[-500:] + [{'session': sid, 'rule': r['id'], 'ts': dt.datetime.now().isoformat(timespec='seconds')} for r in new]
     write_jsonl(SHOWN, rows)
-    text = '\n'.join(L['rule_paths'].format(id=r['id'], when=str(r.get('when', ''))[:120], do=str(r.get('do', ''))[:220]) for r in new)[:600]
-    log_hook('edit', text, file=f)
-    _emit({'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'additionalContext': text}})
+    return '\n'.join(L['rule_paths'].format(id=r['id'], when=str(r.get('when', ''))[:120], do=str(r.get('do', ''))[:220]) for r in new)[:600]
+
+
+def hook_edit(inp):
+    """PreToolUse (Edit / Write / MultiEdit / NotebookEdit), 2.4 — kept for settings written by 2.4; 2.5 installs `hook tool`"""
+    text = edit_text(inp)
+    if text:
+        log_hook('edit', text, file=(inp.get('tool_input') or {}).get('file_path'))
+        _emit({'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'additionalContext': text}})
+
+
+def hook_tool(inp):
+    """PreToolUse on every working tool (2.5): the path rule of 2.4 + act.py (materials, engines, attempts, recall by the action, the
+    heartbeat) in ONE process — never a lock, never an exception to the session"""
+    extra = edit_text(inp)
+    A = act()
+    out = A.hook_act(inp, extra) if A else None
+    if out is None and extra:
+        log_hook('tool', extra, tool=inp.get('tool_name'))
+        out = {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'additionalContext': extra}}
+    if out:
+        _emit(out)
 
 
 # ---------------------------------------------------------------- the council
@@ -1248,12 +1304,21 @@ def main(a):
         sys.path.insert(0, HERE)
         import board
         return board.serve(sys.modules[__name__], a[1:])
-    if a[:1] == ['hook'] and a[1:2] and a[1] in ('subagent', 'subagent-start', 'agent-done', 'edit'):
-        try:                                                # (2.4: parallel agents and every edit — no registry lock, Fable 07.11)
-            {'subagent': hook_subagent, 'subagent-start': hook_subagent_start, 'agent-done': hook_agent_done, 'edit': hook_edit}[a[1]](_stdin())
+    if a[:1] == ['hook'] and a[1:2] and a[1] in ('subagent', 'subagent-start', 'agent-done', 'edit', 'tool'):
+        try:                                                # (2.4: parallel agents and every edit — no registry lock, Fable 07.11; 2.5: every tool)
+            {'subagent': hook_subagent, 'subagent-start': hook_subagent_start, 'agent-done': hook_agent_done, 'edit': hook_edit,
+             'tool': hook_tool}[a[1]](_stdin())
         except Exception:
             pass
         return 0
+    if a[:1] in (['material'], ['attempts'], ['engine']):    # (2.5: knowledge at the moment of action — act.py)
+        A = act()
+        if not A:
+            print('act.py is not installed next to foreman.py'); return 1
+        return {'material': A.material_cmd, 'attempts': A.attempts_cmd, 'engine': A.engine_cmd}[a[0]](a[1:])
+    if a[:2] == ['replay', '--tools'] and len(a) > 2:
+        A = act()
+        return A.replay_tools(a[2], a[3:]) if A else 1
     if a[:1] == ['rules'] and a[1:2] == ['export']:
         n, m, far = rules_export()
         print(L['rules_export'].format(n=n, m=m, far=L['rules_far'].format(n=far) if far else ''))

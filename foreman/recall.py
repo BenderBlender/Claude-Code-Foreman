@@ -320,13 +320,22 @@ def rule_blocks():
     return out
 
 
+def _rel(f):
+    """the path relative to the project — or the absolute one: a rule book on another drive has no relative path (2.5: relpath raised
+    and took the whole recall down)"""
+    try:
+        return os.path.relpath(f, ROOT).replace('\\', '/')
+    except ValueError:
+        return f.replace('\\', '/')
+
+
 def extra_blocks():
     """an existing rule book, read as it is: every markdown table row (its first cell and a Keys cell are the trigger) and every
     ### section (its heading and **Test:** / **Keys** lines)"""
     out = []
     for g in CFG['lessons'].get('rules_extra') or []:
         for f in sorted(glob.glob(g if os.path.isabs(g) else os.path.join(ROOT, g), recursive=True)):
-            text, rel = read(f), os.path.relpath(f, ROOT).replace('\\', '/')
+            text, rel = read(f), _rel(f)
             for i, line in enumerate(text.splitlines(), 1):
                 if line.startswith('| ') and not re.match(r'^\|[\s\-|:]+\|?$', line) and line.count(' | ') >= 2:
                     cells = [c.strip() for c in line.strip().strip('|').split(' | ')]

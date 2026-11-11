@@ -5,6 +5,9 @@
                                                                   --modules: promises (the asks), lessons (the rules, 2.0); both by default
                                                                   2.4: contract (a subagent's output file is checked), rules_paths
                                                                   (rules with paths: .claude/rules + the edit hook) — both on by default;
+                                                                  2.5: materials, attempts, engines — knowledge at the moment of action
+                                                                  (act.py, one PreToolUse hook «tool») — on; act_recall, heartbeat —
+                                                                  switches, off (the council of 11.11) until the owner names them;
                                                                   a --modules list names EVERY module wanted (the rest are off)
   python install.py [PROJECT_DIR] --uninstall [--purge] [--yes]   remove the hooks, the agent and the CLAUDE.md section;
                                                                   --purge also moves .foreman/ aside (.foreman_removed_<time>), never deletes
@@ -49,6 +52,11 @@ TXT = {
            'contract_rule': ('{n}. **Задание субагенту — с файлом результата.** Бриф агенту, который должен что-то записать, кончается строкой '
                              '«Файл результата: `путь`». Прораб проверит файл, когда агент остановится: нет файла → агент продолжит и запишет; '
                              'если так и не записал — вам скажут «этап НЕ сделан»: продолжите ТОГО ЖЕ агента (SendMessage), не запускайте нового.'),
+           'act_rule': ('{n}. **Знание в момент действия (2.5).** Перед действием Прораб может показать раздел разбора '
+                        'движка, «попытка N» или (если владелец включил) горячее правило к нему — это знание, сверься с ним. Материалы владельца («сначала изучи …» + ссылки) — СНАЧАЛА '
+                        'источники, разбор в файл (что взято, что не прочитано) → `foreman.py material read M-… --study <файл>`; откладывание '
+                        '— `material skip M-… --why "…"`. Третий вариант того же скрипта — остановиться: 2–3 разных подхода в OPTIONS.md, '
+                        'выбрать один. Отказ Прораба всегда один и с выходом: прочитать причину, а не повторять вслепую.'),
            'panel_rule': ('10. **Важное, дорогое решение → консилиум моделей** (модуль panel, его включил владелец). Навык `foreman-panel`: один бриф '
                           'без секретов → независимые ответы (`python .foreman/foreman.py panel run …` + свои субагенты других моделей) → проверка '
                           'утверждений → `DECISION.md` → владельцу до сборки. Перед отправкой брифа наружу — спросить владельца.'),
@@ -83,6 +91,11 @@ TXT = {
            'contract_rule': ('{n}. **A brief to a subagent names its output file.** A brief for an agent that must write something ends with '
                              '«Output file: `path`». Foreman checks the file when the agent stops: missing → the agent goes on and writes it; '
                              'still missing → you are told «the phase is NOT done»: resume THE SAME agent (SendMessage), do not spawn a new one.'),
+           'act_rule': ('{n}. **Knowledge at the moment of action (2.5).** Before an action Foreman may show an engine\'s notes, '
+                        '«attempt N» or (if the owner switched it on) a hot rule for it — that is knowledge, check against it. The owner\'s materials («study … first» + links) — the sources '
+                        'FIRST, notes in a file (what was taken, what was not read) → `foreman.py material read M-… --study <file>`; a delay '
+                        '— `material skip M-… --why "…"`. The third variant of the same script — stop: 2–3 different approaches in '
+                        'OPTIONS.md, pick one. A refusal of Foreman is always one and has an exit: read the reason, do not just repeat.'),
            'panel_rule': ('10. **An important, costly decision → the model panel** (module panel, switched on by the owner). Skill `foreman-panel`: one '
                           'brief without secrets → independent answers (`python .foreman/foreman.py panel run …` + own subagents of other models) → '
                           'check the claims → `DECISION.md` → to the owner before building. Ask the owner before the brief leaves the machine.'),
@@ -148,7 +161,14 @@ def stamp():
     return dt.datetime.now().strftime('%Y%m%d_%H%M%S')
 
 
-def hooks_block(proj, promises=True, contract=True, rules_paths=True):
+ACT_MODULES = ('materials', 'act_recall', 'heartbeat', 'attempts', 'engines')
+# (the council of 11.11: recall by the action and the heartbeat were the noise of a real day — switches, off by default)
+ACT_DEFAULT = {'materials': True, 'act_recall': False, 'heartbeat': False, 'attempts': True, 'engines': True}
+ALL_MODULES = ('promises', 'lessons', 'board', 'panel', 'contract', 'rules_paths') + ACT_MODULES
+TOOL_MATCH = 'Bash|PowerShell|Edit|Write|MultiEdit|NotebookEdit|Agent|Task'
+
+
+def hooks_block(proj, promises=True, contract=True, rules_paths=True, act=True):
     py = sys.executable.replace('\\', '/')
     fm = os.path.join(proj, '.foreman', 'foreman.py').replace('\\', '/')
     cmd = lambda mode: f'"{py}" "{fm}" hook {mode}'           # noqa: E731
@@ -162,8 +182,10 @@ def hooks_block(proj, promises=True, contract=True, rules_paths=True):
                 'SubagentStart': [{'hooks': [{'type': 'command', 'command': cmd('subagent-start'), 'timeout': 10}]}],
                 'PostToolUse': [{'matcher': 'Agent|Task', 'hooks': [{'type': 'command', 'command': cmd('agent-done'), 'timeout': 10}]}]}
                if contract else {}),
-            # (2.4: a rule whose paths lie OUTSIDE the project — shown before an edit of a matching file; inside → .claude/rules)
-            **({'PreToolUse': [{'matcher': 'Edit|Write|MultiEdit|NotebookEdit',
+            # (2.4: a rule whose paths lie OUTSIDE the project — shown before an edit of a matching file; inside → .claude/rules.
+            #  2.5: ONE PreToolUse process per working tool call does both that and act.py — the knowledge at the moment of action)
+            **({'PreToolUse': [{'matcher': TOOL_MATCH, 'hooks': [{'type': 'command', 'command': cmd('tool'), 'timeout': 10}]}]} if act else
+               {'PreToolUse': [{'matcher': 'Edit|Write|MultiEdit|NotebookEdit',
                                 'hooks': [{'type': 'command', 'command': cmd('edit'), 'timeout': 10}]}]} if rules_paths else {})}
 
 
@@ -187,7 +209,7 @@ def strip_ours(settings):
     return settings
 
 
-def claude_section(proj, lang, remove=False, promises=True, hint='', panel=False, contract=False):
+def claude_section(proj, lang, remove=False, promises=True, hint='', panel=False, contract=False, act=False):
     p = os.path.join(proj, 'CLAUDE.md')
     s = io.open(p, encoding='utf-8').read() if os.path.exists(p) else ''
     if (START in s) != (END in s):                          # (one mark without the other: never guess where the section ends)
@@ -210,6 +232,8 @@ def claude_section(proj, lang, remove=False, promises=True, hint='', panel=False
             sec += '\n' + TXT[lang]['panel_rule']
         if contract:                                        # (2.4: the subagent contract — the marker the hook looks for)
             sec += '\n' + TXT[lang]['contract_rule'].format(n=11 if panel else 10)
+        if act:                                             # (2.5: knowledge at the moment of action — what its notes and refusals mean)
+            sec += '\n' + TXT[lang]['act_rule'].format(n=10 + bool(panel) + bool(contract))
         s = (s.rstrip('\n') + '\n\n' if s.strip() else '') + START + '\n' + sec + '\n' + END + '\n'
     if s.strip() or os.path.exists(p):
         io.open(p, 'w', encoding='utf-8', newline='\n').write(s)
@@ -284,16 +308,19 @@ def install(proj, lang, yes_all, modules=None):
     fdir = os.path.join(proj, '.foreman')
     os.makedirs(fdir, exist_ok=True)
     bdir = os.path.join(fdir, 'backup', stamp())
-    for n in ('foreman.py', 'recall.py', 'board.py', 'board.html', 'panel.py', 'lexicon.json'):
+    for n in ('foreman.py', 'recall.py', 'act.py', 'board.py', 'board.html', 'panel.py', 'lexicon.json'):
         if n != 'lexicon.json' or not os.path.exists(os.path.join(fdir, n)):     # (the owner's own words stay in his lexicon)
             put(os.path.join(KIT, 'foreman', n), os.path.join(fdir, n), bdir)
     cfg = read_json(os.path.join(fdir, 'config.json'), {})
     cfg = {'lang': lang, 'stale_days': 3, 'allow_cmd': False, 'orphans': {'candidates': [], 'corpus': []}, 'extra_ask_cues': [], **cfg, 'lang': lang}
     cfg['council'] = {'candidates': 2, 'max_rounds': 3, 'stop_after': 2, **(cfg.get('council') or {})}
     cfg['modules'] = {'promises': True, 'lessons': True, 'board': False, 'panel': False, 'contract': True, 'rules_paths': True,
-                      **(cfg.get('modules') or {})}
+                      **ACT_DEFAULT, **(cfg.get('modules') or {})}
     if modules is not None:
-        cfg['modules'] = {m: m in modules for m in ('promises', 'lessons', 'board', 'panel', 'contract', 'rules_paths')}
+        cfg['modules'] = {m: m in modules for m in ALL_MODULES}
+    # (2.5, act.py: the hot rule books for recall by the action and the heartbeat; the engine map — both the project's to fill)
+    cfg['act'] = {'hot_books': [], **(cfg.get('act') or {})}
+    cfg.setdefault('engines', [])
     cfg['panel'] = {'ask_each_time': True, 'timeout_s': 600, 'members': [], **(cfg.get('panel') or {})}
     cfg['board'] = {'port': 8765, 'poll_s': 3, 'token_file': '', 'registries': [], **(cfg.get('board') or {})}
     cfg['budget'] = {'prompt_chars': 1200, 'session_chars': 2000, 'recall_hits': 3, 'recall_chars': 700, 'hot_rows': 5, **(cfg.get('budget') or {})}
@@ -330,14 +357,15 @@ def install(proj, lang, yes_all, modules=None):
         out(L['backup'].format(p=bk))
     settings = strip_ours(read_json(sp, {}))
     hooks = settings.setdefault('hooks', {})
+    act = any(cfg['modules'].get(m, True) for m in ACT_MODULES)
     for ev, groups in hooks_block(proj, cfg['modules'].get('promises', True), cfg['modules'].get('contract', True),
-                                  cfg['modules'].get('rules_paths', True)).items():
+                                  cfg['modules'].get('rules_paths', True), act).items():
         hooks.setdefault(ev, []).extend(groups)
     write_json(sp, settings)
     if cfg['modules'].get('rules_paths', True) and cfg['modules'].get('lessons', True):   # (the active rules with paths → .claude/rules)
         subprocess.run([sys.executable, os.path.join(fdir, 'foreman.py'), 'rules', 'export'], capture_output=True)
     claude_section(proj, lang, promises=cfg['modules'].get('promises', True), hint=str(cfg['lessons'].get('record_hint') or '')[:160],
-                   panel=cfg['modules'].get('panel', False), contract=cfg['modules'].get('contract', True))
+                   panel=cfg['modules'].get('panel', False), contract=cfg['modules'].get('contract', True), act=act)
     out(L['done'])
     promises = cfg['modules'].get('promises', True)
     ok = selftest(proj, promises)
