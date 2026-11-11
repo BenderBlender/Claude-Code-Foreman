@@ -95,7 +95,8 @@ try:
     check('modules: promises + lessons on, board and panel off (2.4: contract and rules_paths on; 2.5: materials, attempts, engines on, '
           'act_recall and heartbeat off — the council of 11.11)',
           cfg['modules'] == {'promises': True, 'lessons': True, 'board': False, 'panel': False, 'contract': True, 'rules_paths': True,
-                             'materials': True, 'act_recall': False, 'heartbeat': False, 'attempts': True, 'engines': True}, cfg.get('modules'))
+                             'materials': True, 'act_recall': False, 'heartbeat': False, 'attempts': True, 'engines': True,
+                             'advisor': False}, cfg.get('modules'))
 
     # the empty start — an ordinary message costs 0 characters; an ask gets only the inbox note
     o = hook(proj, 'prompt', {'prompt': 'интересно, как вообще устроены такие системы памяти у агентов'})

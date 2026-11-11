@@ -32,6 +32,14 @@ refusals only where the owner said «first» or a project switched them on, the 
      the doc's section in front of Claude (deny_first: refused once instead). `foreman.py engine ack <name> --modes "…"` names the
      modes and lets it pass.
 
+  E  the advisor (module advisor, 2.6, OFF by default; the council of 11.11: «Foreman — a detector of events, a budget counter and a
+     journal, never the one who launches»): the events where a strong second opinion pays — 2 a sub-goal failed twice (with the
+     attempt warning), 3 a costly decision (an item of a registry in config «advisor.registries» marked «advisor.mark» and in work),
+     5 the third repeat of one correction (the owner's correction matches a rule whose history says it failed twice already) — get
+     ONE note each, with the brief's frame and «calls today n / day_max»; a call of the advisor's model (Agent «model»: fable …) is
+     counted, and past day_max or a brief over brief_words a note says so. Never a refusal, never inside a subagent.
+     `foreman.py advisor [days]` — the journal.
+
 Files: .foreman/materials.jsonl (the owner's materials) · .foreman/act.jsonl (what was shown / refused / counted, per session; pruned).
 One hook process per tool call (PreToolUse), no registry lock: the materials file is rewritten only by the prompt / stop hooks and the
 CLI (under the lock); this hook only appends. `foreman.py replay --tools <transcript.jsonl>` runs B / ♥ / C / D over a real session
@@ -77,8 +85,14 @@ DEFAULTS = {'hot_books': [], 'recall_every_min': 30, 'recall_rules': 2, 'recall_
             #  result by design, never an attempt; rc1's replay: 8 of 13 warnings of 09.11 stood on them)
             'look_tools': [],
             'gate_hours': 8, 'remind_min': 20, 'ack_hours': 12}
-# (B and ♥ are switches, off until the owner turns them on — the council of 11.11: on a real day they were the noise; A, C, D on)
-MODULE_DEFAULT = {'act_recall': False, 'heartbeat': False}
+# (B and ♥ are switches, off until the owner turns them on — the council of 11.11: on a real day they were the noise; A, C, D on;
+#  E the advisor is the owner's decision too — its events and its ceiling are his)
+MODULE_DEFAULT = {'act_recall': False, 'heartbeat': False, 'advisor': False}
+# (config «advisor»: who the advisor is (the name in the notes — the owner changes it when the plan changes), the model names of its
+#  calls, the day's ceiling, the brief's size, the registries whose marked items in work are «costly decisions»)
+ADV_DEFAULTS = {'name': 'советник', 'models': ['fable'], 'day_max': 3, 'brief_words': 700, 'registries': [], 'mark': 'costly',
+                'doing': ['doing', 'в работе']}
+ADV = dict(ADV_DEFAULTS)
 
 TXT = {
     'ru': {'mat_new': ('ПРОРАБ·материалы {id} ({n}{first}): изучи САМИ источники до работы (не страницу продукта) → разбор в файл: что '
@@ -116,6 +130,15 @@ TXT = {
                         '<почему>» в команде. Отказ один раз.'),
            'eng_ack': '{name}: режимы названы — проходит ({h} ч)', 'eng_ack_need': '--modes "…" — перечисли режимы движка (≥ 15 знаков): это и есть знание',
            'eng_none': 'нет такого движка в config.json → "engines": {name}',
+           'adv_2': ('ПРОРАБ·{name} (повод 2 — вторая неудача подцели): выбор дорогой или неясный → {name}: бриф ≤ {w} слов — цель, что '
+                     'не вышло и почему (числа), 3–5 путей, что исключено, «Файл результата»; усилие high. Вызовов сегодня {n}/{max}.'),
+           'adv_3': ('ПРОРАБ·{name} (повод 3 — дорогое решение): {id} «{title}» помечен «{why}» и в работе → до сборки консилиум (xhigh) '
+                     'или {name}: бриф ≤ {w} слов, 3–5 путей, что исключено, «Файл результата». Вызовов сегодня {n}/{max}.'),
+           'adv_5': ('ПРОРАБ·{name} (повод 5 — третий повтор поправки): похоже на правило, которое нарушалось уже {k} раз(а) — «{rule}». '
+                     'Кроме записи урока — {name}: почему защита не сработала (бриф ≤ {w} слов, усилие high). Вызовов сегодня {n}/{max}.'),
+           'adv_over': 'ПРОРАБ·{name}: это {n}-й вызов сегодня при потолке {max} — дальше Opus xhigh в чистом контексте или слово владельца.',
+           'adv_long': 'ПРОРАБ·{name}: бриф {words} слов при потолке {w} — сократите: цель, что исключено, 3–5 путей, «Файл результата».',
+           'adv_head': 'Советник за {d} дн.: поводов {e} ({by}), вызовов {c}; по дням: {days}', 'adv_none': 'советник: событий нет',
            'rp_head': 'Повтор по расшифровке {f}: вызовов {n} (Bash / PowerShell {b}), сообщений владельца {o}',
            'rp_line': '  {k:<10} {n:>4}  ({per:.1f} на 100 вызовов)', 'rp_top': '  чаще всего: {list}'},
     'en': {'mat_new': ('FOREMAN·materials {id} ({n}{first}): study the SOURCES themselves before the work (not a product page) → notes in '
@@ -153,6 +176,16 @@ TXT = {
                         '<why>» in the command. Refused once.'),
            'eng_ack': '{name}: modes named — it passes ({h} h)', 'eng_ack_need': '--modes "…" — list the engine\'s modes (≥ 15 chars): that IS the knowledge',
            'eng_none': 'no such engine in config.json → "engines": {name}',
+           'adv_2': ('FOREMAN·{name} (event 2 — a sub-goal failed twice): a costly or unclear choice → the {name}: a brief ≤ {w} words — the '
+                     'goal, what failed and why (numbers), 3–5 ways, what is ruled out, «Output file»; effort high. Calls today {n}/{max}.'),
+           'adv_3': ('FOREMAN·{name} (event 3 — a costly decision): {id} «{title}» is marked «{why}» and in work → before building, a council '
+                     '(xhigh) or the {name}: a brief ≤ {w} words, 3–5 ways, what is ruled out, «Output file». Calls today {n}/{max}.'),
+           'adv_5': ('FOREMAN·{name} (event 5 — the third repeat of a correction): it looks like a rule that failed {k} time(s) already — '
+                     '«{rule}». Besides the lesson record — the {name}: why the guard did not hold (a brief ≤ {w} words, effort high). '
+                     'Calls today {n}/{max}.'),
+           'adv_over': 'FOREMAN·{name}: call {n} today with a ceiling of {max} — from here Opus xhigh in a clean context, or the owner\'s word.',
+           'adv_long': 'FOREMAN·{name}: the brief has {words} words, the ceiling is {w} — cut it: the goal, what is ruled out, 3–5 ways, «Output file».',
+           'adv_head': 'The advisor in {d} day(s): events {e} ({by}), calls {c}; per day: {days}', 'adv_none': 'advisor: no events',
            'rp_head': 'Replay of {f}: {n} tool calls (Bash / PowerShell {b}), owner messages {o}',
            'rp_line': '  {k:<10} {n:>4}  ({per:.1f} per 100 calls)', 'rp_top': '  most often: {list}'},
 }
@@ -183,9 +216,10 @@ def _age_min(ts):
 
 
 def setup(fm):
-    global FM, CFG, LX
+    global FM, CFG, LX, ADV
     FM = fm
     CFG = {**DEFAULTS, **(fm.CFG.get('act') or {})}
+    ADV = {**ADV_DEFAULTS, **(fm.CFG.get('advisor') or {})}
     LX = TXT.get(fm.CFG.get('lang'), TXT['ru'])
 
 
@@ -1061,7 +1095,11 @@ def attempts(tool, ti, sid, cwd):
     log(run)
     if n == CFG['attempt_warn']:
         log({'kind': 'att_warn', 'session': sid, 'sig': sig, 'n': n, **({'inp': inp} if inp else {})})
-        return 'warn', LX['att_warn'].format(n=n, m=win, sig=sig)
+        text = LX['att_warn'].format(n=n, m=win, sig=sig)
+        if on('advisor'):                             # (E, event 2: the second failure of a sub-goal — the advisor if the choice is costly)
+            log({'kind': 'adv_note', 'session': sid, 'event': 2, 'sig': sig})
+            text += '\n' + _adv('adv_2')
+        return 'warn', text
     return '', ''
 
 
@@ -1194,6 +1232,131 @@ def engine_cmd(a):
     return 0
 
 
+# ---------------------------------------------------------------- E: the advisor's events (2.6, the council of 11.11)
+def _today():
+    return now_dt().date().isoformat()
+
+
+def adv_calls_today():
+    return sum(1 for r in acts(None, 24 * 60) if r.get('kind') == 'adv_call' and str(r.get('ts', ''))[:10] == _today())
+
+
+def _adv(key, **kw):
+    return LX[key].format(name=ADV['name'], w=ADV['brief_words'], n=adv_calls_today(), max=ADV['day_max'], **kw)
+
+
+def advisor_call(tool, ti, sid):
+    """an Agent call of the advisor's model → counted; past the day's ceiling or with a brief too long → a note (never a refusal)"""
+    if not on('advisor') or tool not in ('Agent', 'Task'):
+        return ''
+    model = str(ti.get('model') or '').lower()
+    if not model or not any(str(m).lower() in model for m in ADV['models']):
+        return ''
+    log({'kind': 'adv_call', 'session': sid, 'desc': str(ti.get('description') or '')[:80]})
+    notes, n = [], adv_calls_today()
+    if n > int(ADV['day_max']):
+        notes.append(LX['adv_over'].format(name=ADV['name'], n=n, max=ADV['day_max']))
+    words = len(str(ti.get('prompt') or '').split())
+    if words > int(ADV['brief_words']):
+        notes.append(LX['adv_long'].format(name=ADV['name'], words=words, w=ADV['brief_words']))
+    return '\n'.join(notes)
+
+
+def advisor_registry(sid):
+    """event 3: an item of a registry (advisor.registries — JSONL files) marked advisor.mark and in work → one note per item and
+    session; the file is read again only when it changed"""
+    if not on('advisor') or not ADV['registries'] or DRY is not None:     # (a replay cannot know the registry of that day)
+        return ''
+    noted = {r.get('item') for r in acts(sid) if r.get('kind') == 'adv_note' and r.get('event') == 3}
+    doing = {str(d).lower() for d in ADV['doing']}
+    out = []
+    for reg in ADV['registries']:
+        f = reg if isinstance(reg, str) else (reg or {}).get('file')
+        if not f:
+            continue
+        p = _doc_path(f)
+        try:
+            mt = int(os.path.getmtime(p))
+        except OSError:
+            continue
+        if any(r.get('kind') == 'adv_reg' and r.get('file') == f and r.get('mt') == mt for r in acts(sid)):
+            continue                                  # (unchanged since this session last looked)
+        log({'kind': 'adv_reg', 'session': sid, 'file': f, 'mt': mt})
+        for it in FM.jsonl(p):
+            why = it.get(ADV['mark'])
+            if not why or str(why).strip().lower() in ('0', 'false', 'no', 'нет') or it.get('id') in noted:
+                continue
+            if str(it.get('status') or '').lower() not in doing:
+                continue
+            log({'kind': 'adv_note', 'session': sid, 'event': 3, 'item': it.get('id')})
+            noted.add(it.get('id'))
+            out.append(_adv('adv_3', id=it.get('id'), title=str(it.get('title') or '')[:70],
+                            why=f"{ADV['mark']}: {why}"[:90] if why is not True else ADV['mark']))
+    return '\n'.join(out[:2])
+
+
+REPEAT_N = {'TWICE': 2, 'THREE': 3, 'THIRD': 3, 'FOURTH': 4, 'FIFTH': 5, 'дважды': 2, 'трижды': 3}
+
+
+def prior_failures(text):
+    """how many times a rule failed already, from its own history: «failed TWICE», «AGAIN … AGAIN», «a THIRD time», «a repeat of …»"""
+    t = str(text)
+    k = 1 + len(re.findall(r'\bAGAIN\b|\ba repeat of\b|\bповтор(?:ение)? ', t))
+    for w, n in REPEAT_N.items():
+        if re.search(r'\b' + w + r'\b', t):
+            k = max(k, n)
+    for m in re.finditer(r'\b(\d)\s*(?:times|раза?)\b', t):
+        k = max(k, int(m.group(1)))
+    return k
+
+
+def advisor_prompt(cls, inp):
+    """event 5 (the prompt hook): the owner's CORRECTION matches a rule whose history says it failed ≥ 2 times already → this is at
+    least the third — the advisor on why the guard did not hold; once per rule a day"""
+    if not on('advisor') or not cls or not cls.get('correction'):
+        return ''
+    R = FM.lessons()
+    if not R:
+        return ''
+    hits, _ = R.gate(R.search(str(cls.get('text') or '')[:600], top=20), 0)
+    h = next((x for x in hits if x['block'].kind == 'rule'), None)
+    if not h:
+        return ''
+    b = h['block']
+    lv = next((r for r in R.jsonl(R.RULES) if r.get('id') == b.ref), None)
+    k = int(lv.get('level') or 0) if lv else prior_failures(b.text)
+    if k < 2:
+        return ''
+    sid = str(inp.get('session_id') or '')
+    if any(r.get('kind') == 'adv_note' and r.get('event') == 5 and r.get('rule') == b.ref and str(r.get('ts', ''))[:10] == _today()
+           for r in acts(None, 24 * 60)):
+        return ''
+    log({'kind': 'adv_note', 'session': sid, 'event': 5, 'rule': b.ref})
+    return _adv('adv_5', k=k, rule=re.sub(r'\s+', ' ', situation(_cells(b.text)[0] if b.text.startswith('|') else
+                                                                 (lv or {}).get('when', b.label)))[:110])
+
+
+def advisor_cmd(a):
+    """advisor [days] — the journal: the events noted and the calls counted"""
+    d = int(a[0]) if a and a[0].isdigit() else 7
+    rows = [r for r in FM.jsonl(ACT) if r.get('kind') in ('adv_note', 'adv_call') and _age_min(r.get('ts')) <= d * 24 * 60]
+    if not rows:
+        print(LX['adv_none']); return 0
+    ev = [r for r in rows if r['kind'] == 'adv_note']
+    by = {}
+    for r in ev:
+        by[r.get('event')] = by.get(r.get('event'), 0) + 1
+    days = {}
+    for r in rows:
+        days.setdefault(str(r.get('ts', ''))[:10], [0, 0])[r['kind'] == 'adv_call'] += 1
+    print(LX['adv_head'].format(d=d, e=len(ev), by=', '.join(f'{k}: {v}' for k, v in sorted(by.items(), key=lambda kv: str(kv[0]))),
+                                c=sum(1 for r in rows if r['kind'] == 'adv_call'),
+                                days='; '.join(f'{k} {v[0]}/{v[1]}' for k, v in sorted(days.items()))))
+    for r in rows[-20:]:
+        print(f"  {str(r.get('ts', ''))[:16]} {r['kind']} {r.get('event', '')} {r.get('item') or r.get('rule') or r.get('desc') or r.get('sig') or ''}")
+    return 0
+
+
 # ---------------------------------------------------------------- the hook
 def hook_act(inp, extra='', log_hook=True):
     """PreToolUse: one refusal at most (materials, an engine with deny_first, attempts with attempts_deny), otherwise the notes
@@ -1213,6 +1376,8 @@ def hook_act(inp, extra='', log_hook=True):
             FM.log_hook('tool', deny, tool=tool, decision='deny')
         return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny', 'permissionDecisionReason': deny}}
     notes = [extra, et if ek == 'note' else '', at if ak == 'warn' else '', action_recall(tool, ti, sid), heartbeat(sid, tr, tool, ti)]
+    if not (inp.get('agent_id') or inp.get('agent_type')):      # (E: the main session only — a subagent never calls for an advisor)
+        notes += [advisor_call(tool, ti, sid), advisor_registry(sid)]
     text = FM.fit(notes, 1100)
     if not text:
         return None
@@ -1305,7 +1470,7 @@ def replay_tools(path, a=()):
                     kind = r.get('kind')
                     k = ('recall' if kind == 'shown' else 'engine' if kind == 'eng_gate' or (kind == 'eng_seen' and not r.get('read'))
                          else 'materials' if kind == 'mat_gate' else 'attempts' if kind in ('att_warn', 'att_deny')
-                         else 'heartbeat' if kind == 'beat' and r.get('rules') else '')
+                         else 'heartbeat' if kind == 'beat' and r.get('rules') else 'advisor' if kind == 'adv_note' else '')
                     if k:
                         count[k] = count.get(k, 0) + 1
                         day = str(CLOCK.date()) if CLOCK else '?'
@@ -1326,12 +1491,14 @@ def replay_tools(path, a=()):
     finally:
         DRY, CLOCK, REPLAY_OWNER = None, None, None
         globals()['open_materials'] = save_m
+    # (the advisor's event 2 rides on an attempt warning — the same note, not a second one)
     notes = sum(count.get(k, 0) for k in ('recall', 'heartbeat', 'attempts', 'engine', 'materials'))
     print(LX['rp_head'].format(f=os.path.basename(str(path)), n=n, b=nb, o=no))
-    for k in ('recall', 'heartbeat', 'attempts', 'engine', 'materials', 'deny'):
+    for k in ('recall', 'heartbeat', 'attempts', 'engine', 'materials', 'advisor', 'deny'):
         print(LX['rp_line'].format(k=k, n=count.get(k, 0), per=100.0 * count.get(k, 0) / max(n, 1)))
     print(LX['rp_line'].format(k='ALL notes', n=notes, per=100.0 * notes / max(n, 1)))
-    print('  modules: ' + ', '.join(f"{m}={'on' if on(m) else 'off'}" for m in ('materials', 'act_recall', 'heartbeat', 'attempts', 'engines')))
+    print('  modules: ' + ', '.join(f"{m}={'on' if on(m) else 'off'}"
+                                    for m in ('materials', 'act_recall', 'heartbeat', 'attempts', 'engines', 'advisor')))
     for day, c in sorted(days.items()):
         print(f'  {day}: ' + ', '.join(f'{k} {v}' for k, v in sorted(c.items())))
     if sigs:

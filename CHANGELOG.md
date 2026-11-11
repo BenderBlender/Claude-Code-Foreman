@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.6.0 — 2026-11-11 · The advisor's events
+
+The model council of 11.11 (Fable 5.2 · Astra · Argon) on how to use a strong, expensive second opinion: the main session (Opus)
+orchestrates; the advisor is called on events, with a brief ≤ 700 words and an output file, ≤ 3 times a day. Foreman — «a detector of
+events, a budget counter and a journal, never the one who launches» (Fable); «only suggest; an automatic launch only after its accuracy
+is measured» (Astra). The owner chose events 2, 3, 5 (the ones with a reliable signal).
+- **Module `advisor`** (act.py, off by default) + config `advisor` (`name`, `models`, `day_max`, `brief_words`, `registries`, `mark`,
+  `doing`):
+  - event 2 — the attempt warning (3rd variant) gets the advisor's line with the brief's frame;
+  - event 3 — an item of a registry (`advisor.registries`, JSONL) marked `advisor.mark` and in work → one note per item and session;
+    the file is read again only when it changed;
+  - event 5 — the prompt hook: a correction whose best matching rule failed ≥ 2 times by its own history («AGAIN», «TWICE», «THIRD»,
+    `level`) → one note per rule a day. On the author's 414 real messages (34 corrections): 5 notes in five days, 4 to the point
+    (partly hindsight — the rows' history was written after);
+  - the calls of the advisor's model are counted (`adv_call`); past `day_max` or a brief over `brief_words` → a note. Never a refusal,
+    never inside a subagent; a replay counts the events 2 (`advisor`), not 3 (a registry has no past).
+- `foreman.py advisor [days]` — the journal. install.py writes the `advisor` section; rule 12 of CLAUDE.md names the advisor's note.
+- Tests: v25 114 (E0–E10). All suites 361, green.
+
 ## 2.5.2 — 2026-11-11 · Environment launchers are unwrapped
 
 Reported the same evening by another session of the author's project: «variant 3 in 20 min: `lab_env_run.cmd`» — three DIFFERENT

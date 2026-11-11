@@ -56,7 +56,8 @@ TXT = {
                         'движка, «попытка N» или (если владелец включил) горячее правило к нему — это знание, сверься с ним. Материалы владельца («сначала изучи …» + ссылки) — СНАЧАЛА '
                         'источники, разбор в файл (что взято, что не прочитано) → `foreman.py material read M-… --study <файл>`; откладывание '
                         '— `material skip M-… --why "…"`. Третий вариант того же скрипта — остановиться: 2–3 разных подхода в OPTIONS.md, '
-                        'выбрать один. Отказ Прораба всегда один и с выходом: прочитать причину, а не повторять вслепую.'),
+                        'выбрать один. Отказ Прораба всегда один и с выходом: прочитать причину, а не повторять вслепую. «Советник (повод N)» — '
+                        'повод позвать сильного советника (если владелец включил): решение за тобой, бриф ≤ 700 слов, потолок вызовов в день.'),
            'panel_rule': ('10. **Важное, дорогое решение → консилиум моделей** (модуль panel, его включил владелец). Навык `foreman-panel`: один бриф '
                           'без секретов → независимые ответы (`python .foreman/foreman.py panel run …` + свои субагенты других моделей) → проверка '
                           'утверждений → `DECISION.md` → владельцу до сборки. Перед отправкой брифа наружу — спросить владельца.'),
@@ -95,7 +96,8 @@ TXT = {
                         '«attempt N» or (if the owner switched it on) a hot rule for it — that is knowledge, check against it. The owner\'s materials («study … first» + links) — the sources '
                         'FIRST, notes in a file (what was taken, what was not read) → `foreman.py material read M-… --study <file>`; a delay '
                         '— `material skip M-… --why "…"`. The third variant of the same script — stop: 2–3 different approaches in '
-                        'OPTIONS.md, pick one. A refusal of Foreman is always one and has an exit: read the reason, do not just repeat.'),
+                        'OPTIONS.md, pick one. A refusal of Foreman is always one and has an exit: read the reason, do not just repeat. «Advisor (event N)» '
+                        '— a reason to call a strong advisor (if the owner switched it on): your call, a brief ≤ 700 words, a ceiling of calls a day.'),
            'panel_rule': ('10. **An important, costly decision → the model panel** (module panel, switched on by the owner). Skill `foreman-panel`: one '
                           'brief without secrets → independent answers (`python .foreman/foreman.py panel run …` + own subagents of other models) → '
                           'check the claims → `DECISION.md` → to the owner before building. Ask the owner before the brief leaves the machine.'),
@@ -161,9 +163,10 @@ def stamp():
     return dt.datetime.now().strftime('%Y%m%d_%H%M%S')
 
 
-ACT_MODULES = ('materials', 'act_recall', 'heartbeat', 'attempts', 'engines')
-# (the council of 11.11: recall by the action and the heartbeat were the noise of a real day — switches, off by default)
-ACT_DEFAULT = {'materials': True, 'act_recall': False, 'heartbeat': False, 'attempts': True, 'engines': True}
+ACT_MODULES = ('materials', 'act_recall', 'heartbeat', 'attempts', 'engines', 'advisor')
+# (the council of 11.11: recall by the action and the heartbeat were the noise of a real day — switches, off by default; the advisor
+#  (2.6) is the owner's decision — its events and ceiling are his)
+ACT_DEFAULT = {'materials': True, 'act_recall': False, 'heartbeat': False, 'attempts': True, 'engines': True, 'advisor': False}
 ALL_MODULES = ('promises', 'lessons', 'board', 'panel', 'contract', 'rules_paths') + ACT_MODULES
 TOOL_MATCH = 'Bash|PowerShell|Edit|Write|MultiEdit|NotebookEdit|Agent|Task'
 
@@ -321,6 +324,9 @@ def install(proj, lang, yes_all, modules=None):
     # (2.5, act.py: the hot rule books for recall by the action and the heartbeat; the engine map — both the project's to fill)
     cfg['act'] = {'hot_books': [], **(cfg.get('act') or {})}
     cfg.setdefault('engines', [])
+    # (2.6: the advisor — who it is, the model of its calls, the day's ceiling, the brief's size, registries with «costly» items)
+    cfg['advisor'] = {'name': 'советник' if lang == 'ru' else 'advisor', 'models': ['fable'], 'day_max': 3, 'brief_words': 700,
+                      'registries': [], 'mark': 'costly', **(cfg.get('advisor') or {})}
     cfg['panel'] = {'ask_each_time': True, 'timeout_s': 600, 'members': [], **(cfg.get('panel') or {})}
     cfg['board'] = {'port': 8765, 'poll_s': 3, 'token_file': '', 'registries': [], **(cfg.get('board') or {})}
     cfg['budget'] = {'prompt_chars': 1200, 'session_chars': 2000, 'recall_hits': 3, 'recall_chars': 700, 'hot_rows': 5, **(cfg.get('budget') or {})}

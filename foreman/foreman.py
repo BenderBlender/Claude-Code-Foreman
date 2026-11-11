@@ -46,6 +46,9 @@ KNOWLEDGE AT THE MOMENT OF ACTION (2.5, act.py — one PreToolUse hook «tool» 
   attempts (variants of the script a command RUNS — after the interpreter, through a wrapper; bookkeeping never counts):
       attempts [list] | think <script> --options "…"
   engines (config «engines»: an engine's notes before the first RUN of its script in a session):  engine list | ack <name> --modes "…"
+  the advisor (2.6, modules.advisor, off by default; config «advisor»): one note on event 2 (a sub-goal failed twice), 3 (a registry
+      item marked «costly» in work), 5 (a correction repeated a third time); the advisor's calls counted against a day's ceiling:
+      advisor [days]
   switches, off by default (the council of 11.11): recall by the action (modules.act_recall — hot rules, history-free triggers + Keys,
       a score bar, silent when the rule has its own guard) · the heartbeat (modules.heartbeat — after a compaction or when the owner is
       silent ≥ 30 min, rotated, ≤ 10 a day, never on reading)
@@ -223,7 +226,8 @@ def config():
     # (2.5: knowledge at the moment of action — act.py: materials, recall by the action, the heartbeat, attempts, engines; recall by
     #  the action and the heartbeat are switches, OFF until the owner turns them on — the council of 11.11, measured on a real day)
     c['modules'] = {'promises': True, 'lessons': True, 'board': False, 'contract': True, 'rules_paths': True, 'materials': True,
-                    'act_recall': False, 'heartbeat': False, 'attempts': True, 'engines': True, **(c.get('modules') or {})}
+                    'act_recall': False, 'heartbeat': False, 'attempts': True, 'engines': True, 'advisor': False,
+                    **(c.get('modules') or {})}
     # (2.4: agent types that cannot write a file — the contract only warns for them, never blocks)
     c['contract'] = {'readonly_types': ['Explore', 'Plan', 'claude-code-guide', 'statusline-setup', 'foreman-judge'], **(c.get('contract') or {})}
     c['budget'] = {'prompt_chars': 1200, 'session_chars': 2000, 'recall_hits': 3, 'recall_chars': 700, 'hot_rows': 5, **(c.get('budget') or {})}
@@ -856,6 +860,7 @@ def hook_prompt(inp):
             write_jsonl(INBOX, rows)
             note = L['hook_inbox'].format(id=iid)[:320]
     reflect = pk = ''
+    cls = None
     R = lessons()
     if R:
         cls = R.classify(prompt)
@@ -865,7 +870,8 @@ def hook_prompt(inp):
             pk = R.pack(cls['text'][:600])
     A = act()
     mat = A.on_prompt(prompt, inp) if A else ''              # (2.5: the owner's materials — «изучи …» with links / paths)
-    text = fit([events, note, mat, reflect, pk], CFG['budget']['prompt_chars'])
+    adv = A.advisor_prompt(cls, inp) if A and cls else ''    # (2.6: a correction repeated a third time → the advisor, event 5)
+    text = fit([events, note, mat, reflect, adv, pk], CFG['budget']['prompt_chars'])
     if text:
         log_hook('prompt', text, head=prompt[:120])
         _emit({'hookSpecificOutput': {'hookEventName': 'UserPromptSubmit', 'additionalContext': text}})
@@ -1342,11 +1348,11 @@ def main(a):
         except Exception:
             pass
         return 0
-    if a[:1] in (['material'], ['attempts'], ['engine']):    # (2.5: knowledge at the moment of action — act.py)
+    if a[:1] in (['material'], ['attempts'], ['engine'], ['advisor']):    # (2.5: knowledge at the moment of action — act.py; 2.6 the advisor)
         A = act()
         if not A:
             print('act.py is not installed next to foreman.py'); return 1
-        return {'material': A.material_cmd, 'attempts': A.attempts_cmd, 'engine': A.engine_cmd}[a[0]](a[1:])
+        return {'material': A.material_cmd, 'attempts': A.attempts_cmd, 'engine': A.engine_cmd, 'advisor': A.advisor_cmd}[a[0]](a[1:])
     if a[:2] == ['replay', '--tools'] and len(a) > 2:
         A = act()
         return A.replay_tools(a[2], a[3:]) if A else 1

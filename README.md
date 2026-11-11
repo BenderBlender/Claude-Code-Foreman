@@ -331,6 +331,23 @@ are searched.
 The first revision (rc1) gave 13 attempt warnings on 09.11, 5 of them real; recall by the action switched on gave 1.3–2.5 per 100,
 ~20–57 % to the point — so it is off by default.
 
+## The advisor's events (2.6)
+
+A model council (11.11) settled how a strong, expensive second opinion is used: the main session orchestrates, the advisor is called
+on a few EVENTS, with a short brief, a few times a day. Foreman is the detector, the counter and the journal of those events — never
+the one who launches (module `advisor`, off by default; the owner chooses the events and the ceiling):
+- **event 2 — a sub-goal failed twice:** the attempt warning (the 3rd variant) gets one more line — a costly or unclear choice → the
+  advisor, with the brief's frame (≤ 700 words: the goal, what failed and why, 3–5 ways, what is ruled out, an output file);
+- **event 3 — a costly decision:** an item of a registry in `advisor.registries` (JSONL; Foreman's own or the project's) marked with
+  `advisor.mark` (`"costly": "<why>"`) and in work → one note per item and session, before building;
+- **event 5 — the third repeat of one correction:** the owner's correction matches a rule whose own history says it failed twice
+  already («failed AGAIN … AGAIN», «TWICE», `level ≥ 2`) → besides the lesson, the advisor on why the guard did not hold; once per
+  rule a day. On the author's 414 real messages (34 corrections) it would have fired 5 times in five days, 4 to the point.
+- **the calls:** an Agent call whose `model` is the advisor's (`advisor.models`, default `fable`) is counted; past `advisor.day_max`
+  (3) or with a brief over `advisor.brief_words` (700) a note says so. Never a refusal; never inside a subagent.
+- `foreman.py advisor [days]` — the journal (events by kind, calls per day) for the weekly review.
+Events 1 (a big task's start) and 4 (a verdict changing a default) stay with the session's judgment: no reliable signal for them.
+
 Also fixed: a rule book on another drive than the project (`lessons.rules_extra` with an absolute path) took the whole recall down
 (`relpath` across drives).
 
@@ -524,6 +541,8 @@ In Windows PowerShell 5.1 the quotes inside a JSON argument get stripped: put th
 | `act.bookkeeping` | `["foreman\\.py"]` | regexes of simple commands that are bookkeeping — never work (materials), an attempt or an engine's use (add the project's registry) |
 | `act.wrappers` | `[]` | regexes of wrapper scripts whose arguments are the real job (`gpu_guard\\.ps1`); a script whose QUOTED argument starts with a command is unwrapped anyway |
 | `act.look_tools` | `[]` | regexes of script names that LOOK at results (`^measure_`, `^compare_page\\.py$` …) — never an attempt |
+| `modules.advisor` | `false` | the advisor's events (2.6) — the owner's decision |
+| `advisor` | `{"name": "advisor", "models": ["fable"], "day_max": 3, "brief_words": 700, "registries": [], "mark": "costly", "doing": ["doing", "в работе"]}` | the advisor's name in the notes, the model of its calls, the day's ceiling, the brief's size, the registries (JSONL) whose marked items in work are costly decisions, the in-work statuses |
 | `act.gate_hours` / `remind_min` / `ack_hours` | `8` / `20` / `12` | a «first» material gates for N hours; the Stop reminder period; how long an `engine ack` holds |
 | `engines` | `[]` | `[{"name": "P3-SAM", "match": "p3.?sam", "doc": "docs/P3SAM.md", "section": "Modes", "deny_first": false}]` |
 

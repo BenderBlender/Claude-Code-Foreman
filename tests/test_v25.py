@@ -175,8 +175,9 @@ try:
     cfgp = os.path.join(proj, '.foreman', 'config.json')
     cfg = json.load(io.open(cfgp, encoding='utf-8'))
     md = cfg.get('modules') or {}
-    check('install: recall by the action and the heartbeat are switches, OFF by default (the council of 11.11); A, C, D on',
-          md.get('act_recall') is False and md.get('heartbeat') is False and md.get('materials') and md.get('attempts') and md.get('engines'), md)
+    check('install: recall by the action, the heartbeat and the advisor are switches, OFF by default (the council of 11.11); A, C, D on; '
+          'the «advisor» section is written', md.get('act_recall') is False and md.get('heartbeat') is False and md.get('advisor') is False
+          and md.get('materials') and md.get('attempts') and md.get('engines') and (cfg.get('advisor') or {}).get('day_max') == 3, [md, cfg.get('advisor')])
     cfg['act'] = {**cfg.get('act', {}), 'hot_books': ['rules/PLAYBOOK.md'], 'keys_books': ['rules/cards/*.md'],
                   # (the project's own bookkeeping and its GPU wrapper — as this project's config names them)
                   'bookkeeping': [r'foreman\.py', r'promises_check\.py'], 'wrappers': [r'gpu_guard\.ps1']}
@@ -548,6 +549,62 @@ try:
              transcript=tr0)
     check('D17 «bash -lc "cd <engine folder> && python demo/x.py"» → the gate (the folder of a relative script counts)', 'щелчки' in denied(o), o)
     cfg['engines'].pop()
+    io.open(cfgp, 'w', encoding='utf-8').write(json.dumps(cfg, ensure_ascii=False, indent=1))
+
+    # ---------------------------------------------------------------- E: the advisor's events (2.6, the council of 11.11)
+    reg = os.path.join(proj, 'reg', 'PROMISES.jsonl')
+    regrows = lambda rows: write(proj, 'reg/PROMISES.jsonl', ''.join(json.dumps(r, ensure_ascii=False) + '\n' for r in rows))   # noqa: E731
+    regrows([{'id': 'P-1', 'title': 'Формат хранения версий', 'status': 'в работе', 'costly': 'формат данных — дорого переделывать'},
+             {'id': 'P-2', 'title': 'Кнопка экспорта', 'status': 'в работе'},
+             {'id': 'P-3', 'title': 'Новый движок', 'status': 'не начато', 'costly': 'архитектура'}])
+    write(proj, 'rules/HISTORY.md', '# History\n\n| When | Do | Where |\n|---|---|---|\n'
+          '| [P2] Оценка модели по одному виду (judging a model from ONE view) — failed AGAIN 05.11 and AGAIN 09.11 | Смотреть со всех '
+          'сторон. | `cards/views.md` |\n| [P4] Цвет подбирать пипеткой (picking colours) | Пипетка, не на глаз. | `cards/refs.md` |\n')
+    cfg = json.load(io.open(cfgp, encoding='utf-8'))
+    o = bash(proj, 'sE0', 'ls -la', 'List files')
+    o0 = hook(proj, 'prompt', {'prompt': 'Опять оценила модель по одному виду. Сколько можно!', 'session_id': 'sE0'})
+    check('E0 the advisor is OFF by default → no event notes', 'повод' not in ctx(o) + ctx(o0), [ctx(o), ctx(o0)])
+    cfg['modules']['advisor'] = True
+    cfg['advisor'] = {**cfg.get('advisor', {}), 'registries': ['reg/PROMISES.jsonl']}
+    cfg['lessons']['rules_extra'] = ['rules/HISTORY.md']
+    io.open(cfgp, 'w', encoding='utf-8').write(json.dumps(cfg, ensure_ascii=False, indent=1))
+    o = bash(proj, 'sE', 'ls -la', 'List files')
+    check('E1 a registry item marked «costly» and IN WORK → one note (event 3); not the unmarked one, not the marked one not started',
+          'повод 3' in ctx(o) and 'P-1' in ctx(o) and 'P-2' not in ctx(o) and 'P-3' not in ctx(o) and 'Вызовов сегодня 0/3' in ctx(o), ctx(o))
+    o = bash(proj, 'sE', 'git status', 'Show status')
+    check('E2 … once per item and session', 'повод 3' not in ctx(o), ctx(o))
+    regrows([{'id': 'P-1', 'title': 'Формат хранения версий', 'status': 'в работе', 'costly': 'формат данных'},
+             {'id': 'P-3', 'title': 'Новый движок', 'status': 'в работе', 'costly': 'архитектура'}])
+    os.utime(reg, (time.time() + 5, time.time() + 5))
+    o = bash(proj, 'sE', 'git status', 'Show status')
+    check('E3 the registry changed: the newly started marked item → its note; the old one not again', 'P-3' in ctx(o) and 'P-1' not in ctx(o), ctx(o))
+    write(proj, 'work/sweep.py', 'print(1)\n')
+    outs = [bash(proj, 'sE2', f'python work/sweep.py --mesh a.glb --thr 0.{i}', 'Sweep') for i in range(1, 4)]
+    check('E4 event 2 rides on the attempt warning (the 3rd variant): the advisor\'s line with the brief\'s frame',
+          'вариант 3' in ctx(outs[2]) and 'повод 2' in ctx(outs[2]) and '700 слов' in ctx(outs[2]), ctx(outs[2]))
+    brief = 'Цель: выбрать формат. Файл результата: `out/adv.md`'
+    calls = [tool(proj, 'sE3', 'Agent', description=f'Advisor {i}', subagent_type='general-purpose', model='fable', prompt=brief)
+             for i in range(4)]
+    check('E5 the advisor\'s calls are counted: calls 1–3 silent, the 4th → «потолок» (a note, never a refusal)',
+          not any('потолк' in ctx(c) for c in calls[:3]) and 'потолк' in ctx(calls[3]) and not any(denied(c) for c in calls), [ctx(c) for c in calls])
+    o = tool(proj, 'sE4', 'Agent', description='Advisor long', subagent_type='general-purpose', model='fable', prompt='слово ' * 800)
+    o2 = tool(proj, 'sE4', 'Agent', description='A reader', subagent_type='Explore', model='haiku', prompt='слово ' * 800)
+    check('E6 a brief over 700 words to the advisor → «сократите»; another model\'s agent → not counted, silent',
+          'сократите' in ctx(o) and 'сократите' not in ctx(o2), [ctx(o), ctx(o2)])
+    o = hook(proj, 'tool', {'session_id': 'sE5', 'agent_id': 'ag7', 'agent_type': 'general-purpose', 'tool_name': 'Agent',
+                            'tool_input': {'model': 'fable', 'prompt': 'слово ' * 800, 'description': 'nested'}, 'cwd': proj})
+    check('E7 inside a subagent → no advisor notes (no advisor calling an advisor)', 'сократите' not in ctx(o) and 'повод' not in ctx(o), ctx(o))
+    o = hook(proj, 'prompt', {'prompt': 'Опять оценила модель по одному виду. Сколько можно!', 'session_id': 'sE6'})
+    check('E8 a correction matching a rule that failed AGAIN … AGAIN (≥ 2 times) → event 5: the advisor on why the guard did not hold',
+          'повод 5' in ctx(o) and 'одному виду' in ctx(o), ctx(o))
+    o = hook(proj, 'prompt', {'prompt': 'Опять оценила модель по одному виду, ну сколько можно!', 'session_id': 'sE6'})
+    o2 = hook(proj, 'prompt', {'prompt': 'Опять цвет подобрала на глаз, а не пипеткой!', 'session_id': 'sE6'})
+    check('E9 … once per rule a day; a correction matching a rule with no history of repeats → no event 5',
+          'повод 5' not in ctx(o) and 'повод 5' not in ctx(o2), [ctx(o), ctx(o2)])
+    code, out = fm(proj, 'advisor')
+    check('E10 `foreman.py advisor` — the journal: the events by kind and the calls', code == 0 and 'вызовов' in out and '3:' in out and '5:' in out, out)
+    cfg['modules']['advisor'] = False
+    cfg['lessons']['rules_extra'] = []
     io.open(cfgp, 'w', encoding='utf-8').write(json.dumps(cfg, ensure_ascii=False, indent=1))
 
     # ---------------------------------------------------------------- K: the subagent contract per session (2.5.1)
