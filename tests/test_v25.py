@@ -469,6 +469,24 @@ try:
     check('C18 an environment launcher («lab_env_run.cmd .venv\\Scripts\\python.exe …», 11.11) → unwrapped: three different commands are '
           'no variants of the .cmd; the script run is the signature', not any('вариант' in ctx(o) for o in outs)
           and sigs and set(sigs) == {'bootstrap.py'}, [sigs, [ctx(o)[:60] for o in outs]])
+    write(proj, 'work/run_authors.cmd', '@echo off\r\necho %*\r\n')
+    outs = [bash(proj, 'sC17', f'work\\run_authors.cmd {objs}', 'The authors\' demo') for objs in ('fox gnome', 'warrior', 'ram hummingbird shoe_house')]
+    write(proj, 'work/bench.py', 'print(1)\n')
+    outs += [bash(proj, 'sC18', 'python work/bench.py smoke --seed 1', 'Smoke'), bash(proj, 'sC18', 'python work/bench.py smoke --seed 1 --fix', 'Smoke again'),
+             bash(proj, 'sC18', 'python work/bench.py matrix audrey', 'The matrix')]
+    outs2 = [bash(proj, 'sC19', f'python work/bench.py smoke --seed {i}', 'Smoke') for i in range(1, 4)]
+    check('C19 inputs named by bare words (objects, modes: «run_authors.cmd fox gnome» / «warrior» / «ram …»; «bench.py smoke» → «matrix '
+          'audrey») are other jobs → no warning; the same positional input with other options → the warning on the 3rd (11.11)',
+          not any('вариант' in ctx(o) for o in outs) and 'вариант 3' in ctx(outs2[2]), [[ctx(o)[:50] for o in outs], ctx(outs2[2])[:60]])
+    write(proj, 'work/parts_to_obj.py', 'print(1)\n')
+    write(proj, 'work/p3click.py', 'print(1)\n')
+    outs = [bash(proj, 'sC20', f'python work/parts_to_obj.py --ids 1,2 --target parts/{t} --out o/{t} --clean 1 2>&1 | tail -5', 'Parts to OBJ')
+            for t in ('a', 'b', 'c')]
+    outs2 = [bash(proj, 'sC21', f'python work/p3click.py {sub} glasses p3click/glasses_clicks.json {opt}', 'Clicks')
+             for sub, opt in (('prep', ''), ('eval', '--probes 3'), ('vote', '--min-piece 2'))]
+    check('C20 a redirection «2>&1» is no input (three --target runs = three jobs); sub-commands before a PATH (prep / eval / vote … '
+          'clicks.json) are one loop → its 3rd run warned (the 09.11 replay of 2.6.1 rc)',
+          not any('вариант' in ctx(o) for o in outs) and 'вариант 3' in ctx(outs2[2]), [[ctx(o)[:40] for o in outs], ctx(outs2[2])[:60]])
     outs = [bash(proj, 'sC15', f'F=work/bands_to_groups.py; sed -n {i},40p $F', 'Read the script') for i in range(1, 5)]
     check('C17 a script named in a variable and read («F=x.py; sed -n … $F») → no run, no attempt',
           not any(r.get('session') == 'sC15' and r.get('kind') == 'run' for r in act_rows(proj)), [ctx(o)[:80] for o in outs])

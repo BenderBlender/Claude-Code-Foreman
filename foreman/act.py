@@ -996,28 +996,46 @@ def compacted(sid):
 # (a dry run and the same run for real are one variant — 10.11: «delete … -DryRun» then the planned run counted as two)
 DRY_FLAG = re.compile(r'(?<!\S)(?:-DryRun|--dry-?run|-WhatIf|--what-?if)(?::\$?\w+)?(?!\S)', re.I)
 # (an option whose value is where a script WRITES — not its input)
-OUT_OPT = re.compile(r'^-{1,2}(?:o|out|output|outdir|out[-_]?dir|out[-_]?file|dst|dest|destination|save|save[-_]?to|log|report|target|to)$', re.I)
+# («--target» / «--to» are not here: ambiguous, and another target is another job — parts_to_obj.py --target …, the 09.11 replay)
+OUT_OPT = re.compile(r'^-{1,2}(?:o|out|output|outdir|out[-_]?dir|out[-_]?file|dst|dest|destination|save|save[-_]?to|log|report)$', re.I)
 NUMBER = re.compile(r'^[-+]?\d+(?:[.,]\d+)?(?:e[-+]?\d+)?%?$', re.I)
 
 
+def _pathlike(t):
+    return bool(t) and not NUMBER.match(t) and bool(re.search(r'[\\/]', t) or (re.search(r'\.[A-Za-z]\w{0,5}$', t) and not re.search(r'\s', t)))
+
+
 def script_input(args):
-    """the first argument that is a path (a slash, or a file name with an extension) and is not an output — what the run works ON;
-    rc1's replay: a «variant» of a tool run on ANOTHER input is another job (measure_round3 on three results, gen.py on another picture)"""
-    prev_out = False
+    """what the run works ON: its first POSITIONAL argument (not an option, not an option's value, not a number) — an object, a mode,
+    a file; else the first path given as an option's value that is not an output. rc1's replay: a «variant» on ANOTHER input is another
+    job (measure_round3 on three results, gen.py on another picture); 2.6.1: inputs named by bare words — «run_authors.cmd fox gnome»,
+    then «warrior», then «ram …»; «bench.py smoke», then «matrix audrey» — were «variant 3» (the Pixel Match session, 11.11)"""
+    # (2.6.1 rc2, the replay of 09.11: a redirection «2>&1» became the «input» of parts_to_obj.py; p3click.py's sub-commands
+    #  prep / eval / vote split one real loop on «glasses p3click/glasses_clicks.json» — so: a positional PATH first, then a word)
+    pathval, words, prev_opt, prev_out = '', [], False, False
     for tok in args:
         t = unq(tok)
-        if t.startswith('-'):
+        if tok.startswith('#') or re.match(r'^(?:\d*>>?|\d*<|&>|\d*>&)', tok):
+            break                                     # (a shell comment or a redirection — no argument from here on)
+        if t.startswith('-') and not NUMBER.match(t):
             k, eq, v = t.partition('=')
-            prev_out = bool(OUT_OPT.match(k)) and not eq
-            if not eq or OUT_OPT.match(k):
-                continue
-            t = unq(v)
-        elif prev_out:
-            prev_out = False
+            out = bool(OUT_OPT.match(k))
+            if eq:
+                if not out and not pathval and _pathlike(unq(v)):
+                    pathval = unq(v)
+                prev_opt = prev_out = False
+            else:
+                prev_opt, prev_out = True, out
             continue
-        if t and not NUMBER.match(t) and (re.search(r'[\\/]', t) or (re.search(r'\.[A-Za-z]\w{0,5}$', t) and not re.search(r'\s', t))):
-            return t.replace('\\', '/').rstrip('/').lower()
-    return ''
+        if prev_opt:                                  # (an option's value: --mesh granny.glb, --thr 0.3, --mode fast)
+            if not prev_out and not pathval and _pathlike(t):
+                pathval = t
+            prev_opt = prev_out = False
+            continue
+        if t and not NUMBER.match(t):
+            words.append(t)
+    pick = next((w for w in words if _pathlike(w)), None) or (words[0] if words else '') or pathval
+    return pick.replace('\\', '/').rstrip('/').lower()
 
 
 def signature(cmd, cwd=None):

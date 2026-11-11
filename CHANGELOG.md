@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.6.1 — 2026-11-11 · An attempt's input may be a word
+
+Reported the same evening by another session of the author's project: «variant 3» on `run_authors.cmd fox gnome` → `warrior` →
+`ram hummingbird …` (three demos on three objects, all fine) and on `bench.py smoke` → `smoke` after a fix → `matrix audrey`; the
+advisor's event 2 rode on it. The «input» was only a PATH argument, so bare-word objects and modes were «the same input».
+- The input = the first POSITIONAL argument that looks like a PATH; with none, the first positional word (an object, a mode); with
+  none, the first path given as an option's value that is not an output (as before). Options, their values, numbers are skipped; a
+  `#` comment and a redirection (`2>&1`, `>`, `>>`, `<`, `&>`) end the arguments. The replay of 09.11 with the first draft: a
+  redirection became «the input» of `parts_to_obj.py`, and `p3click.py prep | eval | vote glasses clicks.json` — one real loop — was
+  split by its sub-commands; both fixed. `--target` / `--to` are no longer «outputs» (ambiguous; another target is another job).
+- The exit code stays no criterion (the case of 09.11: all seven runs of the loop exited 0).
+- Replay of the case's own transcript (09.11 · 09.11 evening · 10.11; 797 · 298 · 1 142 calls; with the heartbeat and the advisor
+  ON): all notes 0.8 · 0 · 0.7 per 100 calls; refusals 1 (the real one) · 0 · 0; attempts 2 · 0 · 0, both real loops
+  (`bands_to_groups.py` on one picture — its 3rd run; `p3click.py … glasses_clicks.json`); the advisor 2 (on those two loops) · 0 · 0;
+  the heartbeat 2 · 0 · 7 (5 and 16 different rules); engines 1 · 0 · 1, both real runs.
+- Tests: v25 116 (C19, C20). All suites 363, green.
+
 ## 2.6.0 — 2026-11-11 · The advisor's events
 
 The model council of 11.11 (Fable 5.2 · Astra · Argon) on how to use a strong, expensive second opinion: the main session (Opus)
