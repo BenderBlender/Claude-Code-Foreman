@@ -1464,7 +1464,10 @@ def replay_tools(path, a=()):
             if e.get('isCompactSummary'):
                 compacted('replay')                  # (the session hook after a compaction — the heartbeat's first trigger)
                 continue
+            # (2.6.3: the prompt hook's own filter — a hand-back, a notice or a parent's brief is no owner message and no material)
             said = R._said(e)
+            if said and (R.AGENT_NOTE.match(said) or '[Subagent hand-back]' in said[:400]):
+                said = ''
             if said:
                 no += 1
                 REPLAY_OWNER = now()

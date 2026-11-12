@@ -84,7 +84,10 @@ ASK = {'ru': [r'сделай', r'сделайте', r'добавь', r'пост�
        'en': [r'\bmake\b', r'\badd\b', r'\bbuild\b', r'\bcreate\b', r'\bfix\b', r'\bimplement\b', r'\bchange\b', r'\bremove\b', r'\bset up\b',
               r'\bplease\b', r'\bwe need\b', r'\bi want\b', r'\bdon\'t forget\b', r'\bremember to\b', r'\bcould you\b', r'\bcan you\b']}
 SHORT = re.compile(r'^(да|ок|окей|хорошо|отлично|продолжай|продолжи|yes|ok|okay|go on|continue|thanks|спасибо)[.!]?$', re.I)
-AGENT_NOTE = re.compile(r'^(Another Claude session sent a message|\[SYSTEM NOTIFICATION|<task-notification|<agent-message|<cross-session-message)')
+# (2.6.3: a side session's FIRST message is the brief its parent session wrote — «Task / Background (from the session that started this
+#  one)»; 12.11 it was filed twice as the owner's ask and as the owner's material, and the parent's stop gate then demanded them)
+AGENT_NOTE = re.compile(r'^(Another Claude session sent a message|\[SYSTEM NOTIFICATION|<task-notification|<agent-message|<cross-session-message'
+                        r'|(Task|Background) \(from the session that started this one\))')
 
 T = {
     'ru': {'head': 'ПРОРАБ ({when}; реестр .foreman/promises.jsonl): {n} пунктов · по пробам готово {ok} · частично {part} · нет {no}{unk} · ждут вас {wait}',

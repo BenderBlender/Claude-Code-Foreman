@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.6.3 — 2026-11-12 · A parent session's brief is not the owner
+
+Reported by the author's project, twice on 12.11: a side session's FIRST message is the brief its parent session wrote — it starts
+with «Task (from the session that started this one):» or «Background (from the session that started this one):». The prompt hook
+filed it as the owner's ask (the inbox) and as the owner's material («сначала изучи …» + links), and the stop gate then demanded them.
+- The agent-note filter (`foreman.py` and `recall.py`, the same pattern as a subagent's hand-back or a cross-session message) now
+  knows these two headings: no inbox row, no material, no owner-log line, no lesson protocol, no lesson demand at Stop.
+- `replay --tools` uses the same filter: a hand-back, a notice or a parent's brief no longer counts as an owner message (the
+  heartbeat's owner silence) or an owner material.
+- Tests: v25 A27, Q5; lessons +2. All suites green.
+
 ## 2.6.2 — 2026-11-11 · A reader on the expensive model is noted
 
 The council of 11.11: «readers — bulk reading, logs, repos — Sonnet / Haiku, never Opus»; on 10.11 two readers ran on Opus by default

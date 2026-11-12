@@ -509,7 +509,9 @@ TEACHING = [re.compile(x) if isinstance(x, str) else x for x in [
     r'я тестировал', r'на мой вкус', r'лучше всего (подходит|делать)', r'пригодится',
     r'\btip:', r'\ba trick\b', r'you can ask', r'\bbetter to\b', r'usually (i|we)\b', r'be careful with', r'i tested', r'in my experience']]
 SHORT = re.compile(r'^(да|ок|окей|хорошо|отлично|продолжай|продолжи|yes|ok|okay|go on|continue|thanks|спасибо)[.!]?$', re.I)
-AGENT_NOTE = re.compile(r'^(Another Claude session sent a message|\[SYSTEM NOTIFICATION|<task-notification|<agent-message|<cross-session-message)')
+# (2.6.3: a side session's first message — its parent's brief «Task / Background (from the session that started this one)» — is no owner)
+AGENT_NOTE = re.compile(r'^(Another Claude session sent a message|\[SYSTEM NOTIFICATION|<task-notification|<agent-message|<cross-session-message'
+                        r'|(Task|Background) \(from the session that started this one\))')
 REMINDER = re.compile(r'<system-reminder[^>]*>[\s\S]*?</system-reminder[^>]*>')
 
 

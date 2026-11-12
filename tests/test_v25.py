@@ -271,6 +271,16 @@ try:
     o3 = bash(proj, 'sK', 'python tools/run.py', 'Run it')
     check('A26 the registry (act.bookkeeping) and reading a .ps1 are no work → pass; the first real run is refused (10.11: a false refusal)',
           not denied(o) and not denied(o2) and 'M-0006' in denied(o3), [o, o2, o3])
+    # (12.11, twice: a side session's FIRST message is its parent's brief — no owner ask, no owner material, no owner message)
+    rows_of = lambda n: [json.loads(l) for l in io.open(os.path.join(proj, '.foreman', n), encoding='utf-8') if l.strip()] \
+        if os.path.exists(os.path.join(proj, '.foreman', n)) else []                                      # noqa: E731
+    before = (len(materials(proj)), len(rows_of('inbox.jsonl')), len(rows_of('owner.jsonl')))
+    for head in ('Background (from the session that started this one):', 'Task (from the session that started this one):'):
+        o = hook(proj, 'prompt', {'prompt': head + '\nПродюсер просил: сначала изучи https://github.com/p/ParentRepo, потом сделай '
+                                  'исправь набор. Файл результата: `notes/x.md`', 'session_id': 'sSide'})
+    after = (len(materials(proj)), len(rows_of('inbox.jsonl')), len(rows_of('owner.jsonl')))
+    check('A27 a parent session\'s brief («Task / Background (from the session that started this one)») → no material, no ask, '
+          'no owner message, no output', after == before and o == {}, [before, after, o])
 
     # ---------------------------------------------------------------- B: recall by the action (hot rules only) — a switch, off by default
     o = bash(proj, 'sB0', 'python F:/work/retopo/render_wire.py --view front', 'Render the face wire from the front view')
@@ -713,6 +723,12 @@ try:
     js = json.loads(out.strip().splitlines()[-1])
     check('Q4 the replay sees a compaction → the heartbeat after it is counted; the totals line and the modules are printed',
           js.get('heartbeat', 0) >= 1 and 'ALL notes' in out and 'act_recall=on' in out, out)
+    trB = transcript(os.path.join(base, 'tr_brief.jsonl'),
+                     [('user', 'Background (from the session that started this one):\n' + M_1228, 30)]
+                     + [('tool', 'Bash', {'command': 'python retopo/qremesh_guides.py --mesh granny.glb', 'description': 'Build guides'}, 20)])
+    code, out = fm(proj, 'replay', '--tools', trB, '--json')
+    js = json.loads(out.strip().splitlines()[-1])
+    check('Q5 the replay: a parent session\'s brief is no owner material (2.6.3)', not js.get('materials'), out)
 
     # ---------------------------------------------------------------- the time per call
     times = []

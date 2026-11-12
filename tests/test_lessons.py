@@ -142,6 +142,12 @@ try:
     check('the prompt hook output ≤ 1200 characters', len(ctx(o)) <= 1200, len(ctx(o)))
     o = hook(proj, 'prompt', {'prompt': '<agent-message from="x">[Subagent hand-back] опять правило сравнения</agent-message>'})
     check('a subagent hand-back is not the owner → no output', o == {}, o)
+    o = hook(proj, 'prompt', {'prompt': 'Task (from the session that started this one):\nопять ты забыл правило сравнения вариантов'})
+    check('a parent session\'s brief is not the owner → no lesson protocol (2.6.3)', o == {}, o)
+    tp0 = os.path.join(base, 't0.jsonl')
+    o = hook(proj, 'stop', {'transcript_path': transcript(tp0, 'Background (from the session that started this one):\nопять ты забыл '
+                                                         'подписать картинки, это неприемлемо', [{'type': 'text', 'text': 'Готово.'}])})
+    check('the Stop gate does not demand a lesson for a parent\'s brief (2.6.3)', 'ПОПРАВКУ' not in str(o.get('reason', '')), o)
 
     # the Stop gate: a REAL record, not the words
     tp = os.path.join(base, 't.jsonl')
